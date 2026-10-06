@@ -1,0 +1,16 @@
+# Firebase Web config for project monilog-28535 (shared with the Flutter app and
+# landing page for identity). These are client-side identifiers, not secrets.
+VITE_FIREBASE_API_KEY=AIzaSyDpq-0dNdsGN4CvumtGpYmAEd6JlF8yVV8
+VITE_FIREBASE_AUTH_DOMAIN=monilog-28535.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=monilog-28535
+VITE_FIREBASE_STORAGE_BUCKET=monilog-28535.firebasestorage.app
+VITE_FIREBASE_MESSAGING_SENDER_ID=719974512803
+VITE_FIREBASE_APP_ID=1:719974512803:web:2ebaf5bf016984b2f0a716
+VITE_FIREBASE_MEASUREMENT_ID=G-58D879GL9S
+
+# Google OAuth Web client ID (Firebase console > Authentication > Sign-in method >
+# Google > Web SDK configuration). Optional; used for Google One Tap. Same web
+# client the Flutter app uses (AppConfig.googleWebClientId).
+VITE_GOOGLE_CLIENT_ID=719974512803-ma49ncdnkq0m201udlu71bj9l563eb7g.apps.googleusercontent.com
+
+VITE_APP_ENV=development
