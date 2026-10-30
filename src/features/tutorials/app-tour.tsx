@@ -14,7 +14,7 @@ const STEPS: Step[] = [
     target: "body",
     placement: "center",
     disableBeacon: true,
-    title: "Welcome to Monilog",
+    title: "Welcome to Moniilog",
     content: "A quick tour of how your local-first ledger works on the web."
   },
   {

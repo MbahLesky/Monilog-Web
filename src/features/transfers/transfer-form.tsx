@@ -13,7 +13,7 @@ import { settingsRepository } from "@/db/repositories/settings-repository";
 import { transfersRepository } from "@/db/repositories/transfers-repository";
 import { transferSchema, type TransferFormValues } from "@/features/transfers/transfer-schema";
 import { ANALYTICS_EVENTS } from "@/lib/analytics-events";
-import { trackEvent } from "@/services/firebase-analytics-service";
+import { trackEvent } from "@/services/telemetry-service";
 import { DEFAULT_CURRENCY } from "@/lib/constants";
 import type { TransferRecord } from "@/types";
 import { toDateInputValue } from "@/utils/date-utils";

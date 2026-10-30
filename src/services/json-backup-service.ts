@@ -117,7 +117,7 @@ export const jsonBackupService = {
       }))
     };
 
-    downloadJson(`monilog_backup_${backupTimestamp()}.json`, JSON.stringify(payload, null, 2));
+    downloadJson(`moniilog_backup_${backupTimestamp()}.json`, JSON.stringify(payload, null, 2));
   },
 
   async restoreBackup(content: string, userId?: string | null) {

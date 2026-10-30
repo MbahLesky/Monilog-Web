@@ -9,7 +9,7 @@ import { Switch } from "@/components/ui/switch";
 import { settingsRepository } from "@/db/repositories/settings-repository";
 import { useReminderPermission } from "@/hooks/use-reminder-permission";
 import { ANALYTICS_EVENTS } from "@/lib/analytics-events";
-import { trackEvent } from "@/services/firebase-analytics-service";
+import { trackEvent } from "@/services/telemetry-service";
 import { ROUTES } from "@/routes/route-constants";
 
 export function OnboardingReminderPage() {
@@ -102,7 +102,7 @@ export function OnboardingReminderPage() {
               <div className="space-y-3">
                 <h2 className="text-2xl font-bold">Browser reminder guidance</h2>
                 <p className="text-sm leading-6 text-primary-foreground/84">
-                  Permission state: <span className="font-semibold">{permission}</span>. If background notifications are limited on your platform, Monilog still keeps the preference and can fall back to in-app guidance later.
+                  Permission state: <span className="font-semibold">{permission}</span>. If background notifications are limited on your platform, Moniilog still keeps the preference and can fall back to in-app guidance later.
                 </p>
               </div>
               <div className="rounded-xl bg-white/12 p-4 text-sm text-primary-foreground/88">

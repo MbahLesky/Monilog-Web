@@ -7,7 +7,7 @@ import { categoriesRepository } from "@/db/repositories/categories-repository";
 import { accountsRepository } from "@/db/repositories/accounts-repository";
 import { transactionsRepository } from "@/db/repositories/transactions-repository";
 import { ANALYTICS_EVENTS } from "@/lib/analytics-events";
-import { trackEvent } from "@/services/firebase-analytics-service";
+import { trackEvent } from "@/services/telemetry-service";
 import { FieldShell } from "@/components/forms/field-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

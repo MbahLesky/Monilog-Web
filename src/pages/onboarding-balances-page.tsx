@@ -10,7 +10,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { ANALYTICS_EVENTS } from "@/lib/analytics-events";
 import { ROUTES } from "@/routes/route-constants";
-import { trackEvent } from "@/services/firebase-analytics-service";
+import { trackEvent } from "@/services/telemetry-service";
 import { useAuthStore } from "@/store/auth-store";
 
 interface BalanceFormValues {
@@ -24,7 +24,7 @@ interface BalanceFormValues {
 
 export function OnboardingBalancesPage() {
   const navigate = useNavigate();
-  const userId = useAuthStore((state) => state.user?.uid ?? null);
+  const userId = useAuthStore((state) => state.user?.id ?? null);
   const accounts = useLiveQuery(() => accountsRepository.listActive(), []);
   const form = useForm<BalanceFormValues>({
     defaultValues: {

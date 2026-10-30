@@ -36,7 +36,7 @@ import { useNavigate } from "react-router-dom";
 
 export function TransactionsPage() {
   const navigate = useNavigate();
-  const userId = useAuthStore((state) => state.user?.uid ?? null);
+  const userId = useAuthStore((state) => state.user?.id ?? null);
   const filters = useTransactionFiltersStore((state) => state.filters);
   const setFilters = useTransactionFiltersStore((state) => state.setFilters);
   const accounts = useLiveQuery(() => accountsRepository.listActive(), []);

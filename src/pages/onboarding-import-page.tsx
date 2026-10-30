@@ -4,7 +4,7 @@ import { ROUTES } from "@/routes/route-constants";
 import { useAuthStore } from "@/store/auth-store";
 
 export function OnboardingImportPage() {
-  const userId = useAuthStore((state) => state.user?.uid ?? null);
+  const userId = useAuthStore((state) => state.user?.id ?? null);
 
   return (
     <div className="container py-10">

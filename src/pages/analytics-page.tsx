@@ -47,7 +47,7 @@ export function AnalyticsPage() {
         <EmptyState
           icon={LineChartIcon}
           title="Analytics will appear as soon as you have data"
-          description="Add transactions or import a CSV first. Monilog handles empty analytics safely and keeps the starter state useful."
+          description="Add transactions or import a CSV first. Moniilog handles empty analytics safely and keeps the starter state useful."
         />
       </PageShell>
     );
@@ -127,7 +127,7 @@ export function AnalyticsPage() {
                   outerRadius={100}
                   paddingAngle={3}
                 >
-                  {(analytics?.categoryBreakdown ?? []).map((entry, index) => (
+                  {(analytics?.categoryBreakdown ?? []).map((entry: { name: string; value: number }, index: number) => (
                     <Cell key={entry.name} fill={CHART_COLORS[index % CHART_COLORS.length]} />
                   ))}
                 </Pie>

@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { env, isFirebaseConfigured } from "@/lib/env";
+import { env, isSupabaseConfigured } from "@/lib/env";
 import { useAuthStore } from "@/store/auth-store";
 
 const GSI_SRC = "https://accounts.google.com/gsi/client";
@@ -46,7 +46,7 @@ export function GoogleOneTap() {
 
   useEffect(() => {
     const clientId = env.googleClientId;
-    if (!clientId || !isFirebaseConfigured) {
+    if (!clientId || !isSupabaseConfigured) {
       return;
     }
 

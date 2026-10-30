@@ -33,7 +33,7 @@ export const csvExportService = {
       columns: ["date", "type", "amount", "category", "account", "note"]
     });
 
-    const fileName = `monilog_transactions_${new Date().toISOString().slice(0, 10)}.csv`;
+    const fileName = `moniilog_transactions_${new Date().toISOString().slice(0, 10)}.csv`;
     downloadFile(fileName, csv);
 
     const record: ExportRecord = {
@@ -66,7 +66,7 @@ export const csvExportService = {
       columns: ["date", "type", "from_account", "to_account", "amount", "fee", "note"]
     });
 
-    const fileName = `monilog_transfers_${new Date().toISOString().slice(0, 10)}.csv`;
+    const fileName = `moniilog_transfers_${new Date().toISOString().slice(0, 10)}.csv`;
     downloadFile(fileName, csv);
 
     const record: ExportRecord = {

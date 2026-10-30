@@ -5,7 +5,7 @@ import { TransferForm } from "@/features/transfers/transfer-form";
 import { useAuthStore } from "@/store/auth-store";
 
 export function TransferPage() {
-  const userId = useAuthStore((state) => state.user?.uid ?? null);
+  const userId = useAuthStore((state) => state.user?.id ?? null);
 
   return (
     <PageShell
@@ -34,7 +34,7 @@ export function TransferPage() {
               <CardTitle className="text-primary-foreground">How transfers affect balances</CardTitle>
             </div>
             <CardDescription className="text-primary-foreground/84">
-              Monilog keeps transfers separate from income and expense records while preserving accurate balances.
+              Moniilog keeps transfers separate from income and expense records while preserving accurate balances.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3 text-sm leading-6 text-primary-foreground/88">

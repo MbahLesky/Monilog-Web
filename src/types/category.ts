@@ -6,4 +6,6 @@ export interface Category extends SyncableEntity {
   iconKey?: string | null;
   colorKey?: string | null;
   isDefault: boolean;
+  presetKey?: string | null;
+  displayOrder?: number;
 }

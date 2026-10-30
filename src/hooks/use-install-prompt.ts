@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { ANALYTICS_EVENTS } from "@/lib/analytics-events";
-import { trackEvent } from "@/services/firebase-analytics-service";
+import { trackEvent } from "@/services/telemetry-service";
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;

@@ -1,11 +1,10 @@
-import type { User } from "firebase/auth";
+import type { User } from "@supabase/supabase-js";
 import { toast } from "sonner";
 import { create } from "zustand";
-import { mapAuthError } from "@/features/auth/auth-errors";
 import { ANALYTICS_EVENTS } from "@/lib/analytics-events";
-import { isFirebaseConfigured } from "@/lib/env";
-import { identifyUser, trackEvent } from "@/services/firebase-analytics-service";
-import { firebaseAuthService } from "@/services/firebase-auth-service";
+import { isSupabaseConfigured } from "@/lib/env";
+import { identifyUser, trackEvent } from "@/services/telemetry-service";
+import { supabaseAuthService } from "@/services/supabase-auth-service";
 import { useSyncStore } from "@/store/sync-store";
 import type { Profile } from "@/types";
 import { workspaceRepository } from "@/db/repositories/workspace-repository";
@@ -24,6 +23,8 @@ interface AuthState {
   hydrateFromUser: (user: User | null) => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (fullName: string, email: string, password: string) => Promise<void>;
+  signInWithPhoneOtp: (phone: string) => Promise<void>;
+  verifyPhoneOtp: (phone: string, token: string) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
   signInWithGoogleCredential: (idToken: string) => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
@@ -33,30 +34,57 @@ interface AuthState {
 }
 
 function profileFromUser(user: User): Profile {
+  const metadata = (user.user_metadata ?? {}) as Record<string, unknown>;
+  const name =
+    (typeof metadata.full_name === "string" && metadata.full_name) ||
+    (typeof metadata.name === "string" && metadata.name) ||
+    user.email?.split("@")[0] ||
+    user.phone ||
+    "";
+  const avatarUrl =
+    typeof metadata.avatar_url === "string" ? metadata.avatar_url : null;
+
   return {
-    id: user.uid,
-    name: user.displayName || "",
-    email: user.email || "",
-    phoneNumber: user.phoneNumber,
-    avatarUrl: user.photoURL,
+    id: user.id,
+    name,
+    email: user.email ?? null,
+    phoneNumber: user.phone ?? null,
+    avatarUrl,
+    onboardingCompleted: true,
+    createdAt: user.created_at || nowIso(),
     updatedAt: nowIso()
   };
 }
 
-function isProfileComplete(profile: Profile | null) {
-  return Boolean(profile && profile.name.trim().length > 0 && profile.email.trim().length > 0);
+function isProfileComplete(profile: Profile | null): boolean {
+  return Boolean(
+    profile &&
+      ((profile.name && profile.name.trim().length > 0) ||
+        (profile.phoneNumber && profile.phoneNumber.trim().length > 0) ||
+        (profile.email && profile.email.trim().length > 0))
+  );
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
   status: "checking",
-  authAvailable: isFirebaseConfigured,
+  authAvailable: isSupabaseConfigured,
   user: null,
   profile: null,
   error: null,
   notice: null,
 
   bootstrap: async () => {
-    // Initial auth state delivered via firebaseAuthService.onAuthStateChange
+    // Initial session is restored and managed by supabase.auth.onAuthStateChange
+    if (isSupabaseConfigured) {
+      const user = await supabaseAuthService.getCurrentUser();
+      if (user) {
+        await get().hydrateFromUser(user);
+      } else {
+        set({ status: "signed_out" });
+      }
+    } else {
+      set({ status: "signed_out" });
+    }
   },
 
   hydrateFromUser: async (user) => {
@@ -69,11 +97,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       return;
     }
 
-    identifyUser(user.uid);
+    identifyUser(user.id);
 
-    await workspaceRepository.releaseStaleOwnership(user.uid);
-    await useSyncStore.getState().runNow(user.uid);
-    await workspaceRepository.stampOwnership(user.uid);
+    await workspaceRepository.releaseStaleOwnership(user.id);
+    await useSyncStore.getState().runNow(user.id);
+    await workspaceRepository.stampOwnership(user.id);
 
     set({
       status: "signed_in",
@@ -86,7 +114,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   signIn: async (email, password) => {
     set({ error: null, notice: null });
     trackEvent(ANALYTICS_EVENTS.signInStarted, { method: "email_password" });
-    const user = await firebaseAuthService.signIn({ email, password });
+    const user = await supabaseAuthService.signIn({ email, password });
     trackEvent(ANALYTICS_EVENTS.signInCompleted, { method: "email_password" });
     await get().hydrateFromUser(user);
   },
@@ -94,55 +122,60 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   signUp: async (fullName, email, password) => {
     set({ error: null, notice: null });
     trackEvent(ANALYTICS_EVENTS.signUpStarted, { method: "email_password" });
-    const user = await firebaseAuthService.signUp({ fullName, email, password });
+    const user = await supabaseAuthService.signUp({ fullName, email, password });
 
-    const verificationSent = await firebaseAuthService.sendVerificationEmail();
-    if (verificationSent) {
-      toast.success("Account created", {
-        description: `We sent a verification link to ${user.email ?? email}.`
-      });
-    }
+    toast.success("Account created", {
+      description: `Welcome to Moniilog! A confirmation email has been sent if required.`
+    });
 
     trackEvent(ANALYTICS_EVENTS.signUpCompleted, { method: "email_password" });
     await get().hydrateFromUser(user);
   },
 
-  signInWithGoogle: async () => {
+  signInWithPhoneOtp: async (phone: string) => {
     set({ error: null, notice: null });
-    const user = await firebaseAuthService.signInWithGoogle();
-    trackEvent(ANALYTICS_EVENTS.googleSignIn, { method: "popup" });
+    trackEvent(ANALYTICS_EVENTS.signInStarted, { method: "phone_otp" });
+    await supabaseAuthService.signInWithPhoneOtp(phone);
+    set({ notice: "6-digit verification code sent via SMS. Enter it below." });
+  },
+
+  verifyPhoneOtp: async (phone: string, token: string) => {
+    set({ error: null, notice: null });
+    trackEvent(ANALYTICS_EVENTS.signInCompleted, { method: "phone_otp" });
+    const user = await supabaseAuthService.verifyPhoneOtp(phone, token);
+    toast.success("Phone verified successfully!");
     await get().hydrateFromUser(user);
   },
 
-  signInWithGoogleCredential: async (idToken) => {
+  signInWithGoogle: async () => {
     set({ error: null, notice: null });
-    try {
-      const user = await firebaseAuthService.signInWithGoogleCredential(idToken);
-      trackEvent(ANALYTICS_EVENTS.googleSignIn, { method: "one_tap" });
-      await get().hydrateFromUser(user);
-    } catch (error) {
-      set({ error: mapAuthError(error) });
-    }
+    trackEvent(ANALYTICS_EVENTS.googleSignIn, { method: "oauth" });
+    await supabaseAuthService.signInWithGoogle();
+  },
+
+  signInWithGoogleCredential: async (idToken: string) => {
+    set({ error: null, notice: null });
+    trackEvent(ANALYTICS_EVENTS.googleSignIn, { method: "one_tap" });
+    const user = await supabaseAuthService.signInWithGoogleCredential(idToken);
+    await get().hydrateFromUser(user);
   },
 
   resetPassword: async (email) => {
     set({ error: null, notice: null });
-    await firebaseAuthService.sendPasswordReset(email);
+    await supabaseAuthService.sendPasswordReset(email);
     trackEvent(ANALYTICS_EVENTS.passwordResetRequested);
-    set({ notice: "Password reset email sent. Check your inbox." });
+    set({ notice: "Password reset link sent. Check your inbox." });
   },
 
   signOut: async () => {
-    if (isFirebaseConfigured) {
-      await firebaseAuthService.signOut();
+    if (isSupabaseConfigured) {
+      await supabaseAuthService.signOut();
     }
 
     trackEvent(ANALYTICS_EVENTS.signOut);
     identifyUser(null);
 
-    window.google?.accounts?.id?.disableAutoSelect();
-
-    // Fix multi-user leakage: Purge local database tables on sign-out
+    // Multi-tenant protection: Purge local database tables on sign-out
     await workspaceRepository.resetAppData();
 
     set({
@@ -161,7 +194,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
 
     if (typeof updates.name === "string" && updates.name.trim()) {
-      await firebaseAuthService.updateDisplayName(updates.name.trim());
+      await supabaseAuthService.updateDisplayName(updates.name.trim());
     }
 
     set({

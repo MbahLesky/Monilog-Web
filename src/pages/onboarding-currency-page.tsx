@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { ANALYTICS_EVENTS } from "@/lib/analytics-events";
 import { SUPPORTED_CURRENCIES } from "@/lib/constants";
 import { ROUTES } from "@/routes/route-constants";
-import { trackEvent } from "@/services/firebase-analytics-service";
+import { trackEvent } from "@/services/telemetry-service";
 import { settingsRepository } from "@/db/repositories/settings-repository";
 
 export function OnboardingCurrencyPage() {

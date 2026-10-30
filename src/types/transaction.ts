@@ -5,6 +5,7 @@ export interface TransactionRecord extends SyncableEntity {
   categoryId: string | null;
   type: TransactionType;
   amount: number;
+  currencyCode?: string;
   description: string;
   affectsAccountBalance: boolean;
   transactionDate: string;

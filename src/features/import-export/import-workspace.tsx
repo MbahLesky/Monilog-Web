@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { accountsRepository } from "@/db/repositories/accounts-repository";
 import { categoriesRepository } from "@/db/repositories/categories-repository";
 import { ANALYTICS_EVENTS } from "@/lib/analytics-events";
-import { trackEvent } from "@/services/firebase-analytics-service";
+import { trackEvent } from "@/services/telemetry-service";
 import { useLiveQuery } from "dexie-react-hooks";
 import type { ImportMappingChoice } from "@/types";
 
@@ -262,7 +262,7 @@ export function ImportWorkspace({
           <CardHeader>
             <CardTitle>Validation issues</CardTitle>
             <CardDescription>
-              Invalid rows stay visible and skippable. Monilog never saves malformed rows silently.
+              Invalid rows stay visible and skippable. Moniilog never saves malformed rows silently.
             </CardDescription>
           </CardHeader>
           <CardContent>

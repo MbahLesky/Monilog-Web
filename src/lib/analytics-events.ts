@@ -7,6 +7,8 @@ export const ANALYTICS_EVENTS = {
   // Auth
   signUpStarted: "sign_up_started",
   signUpCompleted: "sign_up_completed",
+  signInStarted: "login_started",
+  signInCompleted: "login",
   loginCompleted: "login",
   googleSignIn: "google_sign_in",
   signOut: "sign_out",

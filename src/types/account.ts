@@ -6,6 +6,9 @@ export interface Account extends SyncableEntity {
   openingBalance: number;
   isDefault: boolean;
   displayOrder: number;
+  presetKey?: string | null;
+  currencyCode?: string;
+  balanceResetAt?: string | null;
 }
 
 export interface AccountBalanceSnapshot extends Account {

@@ -6,9 +6,11 @@ import { FieldShell } from "@/components/forms/field-shell";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AuthDivider } from "@/features/auth/auth-divider";
 import { AuthLayout } from "@/features/auth/auth-layout";
 import { GoogleAuthButton } from "@/features/auth/google-auth-button";
+import { PhoneAuthForm } from "@/features/auth/phone-auth-form";
 import { registerSchema, type RegisterFormValues } from "@/features/auth/schemas";
 import { ROUTES } from "@/routes/route-constants";
 import { useAuthStore } from "@/store/auth-store";
@@ -66,7 +68,7 @@ export function RegisterPage() {
     <AuthLayout
       eyebrow="Get started"
       title="Create your Moniilog account"
-      description="Create your account to manage accounts, track expenses, and sync your financial ledger."
+      description="Create your account to manage accounts, track expenses, and sync your financial ledger across devices."
     >
       <div className="grid gap-5">
         {!authAvailable ? (
@@ -89,61 +91,74 @@ export function RegisterPage() {
           </Card>
         ) : null}
 
-        <GoogleAuthButton onClick={handleGoogle} disabled={!authAvailable} loading={googleLoading} />
+        <GoogleAuthButton label="Sign up with Google" onClick={handleGoogle} disabled={!authAvailable} isLoading={googleLoading} />
 
-        <AuthDivider label="Or register with email" />
+        <AuthDivider label="Or create account with" />
 
-        <form className="grid gap-4" onSubmit={form.handleSubmit(onSubmit)}>
-          <FieldShell label="Full name" error={form.formState.errors.fullName?.message}>
-            <Input
-              autoComplete="name"
-              placeholder="Your name"
-              disabled={form.formState.isSubmitting}
-              {...form.register("fullName")}
-            />
-          </FieldShell>
+        <Tabs defaultValue="phone" className="w-full">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="phone">Phone / WhatsApp</TabsTrigger>
+            <TabsTrigger value="email">Email</TabsTrigger>
+          </TabsList>
 
-          <FieldShell label="Email" error={form.formState.errors.email?.message}>
-            <Input
-              type="email"
-              autoComplete="email"
-              placeholder="you@example.com"
-              disabled={form.formState.isSubmitting}
-              {...form.register("email")}
-            />
-          </FieldShell>
+          <TabsContent value="phone" className="pt-2">
+            <PhoneAuthForm disabled={!authAvailable} />
+          </TabsContent>
 
-          <FieldShell label="Password" error={form.formState.errors.password?.message}>
-            <Input
-              type="password"
-              autoComplete="new-password"
-              placeholder="At least 8 characters"
-              disabled={form.formState.isSubmitting}
-              {...form.register("password")}
-            />
-          </FieldShell>
+          <TabsContent value="email" className="pt-2">
+            <form className="grid gap-4" onSubmit={form.handleSubmit(onSubmit)}>
+              <FieldShell label="Full name" error={form.formState.errors.fullName?.message}>
+                <Input
+                  autoComplete="name"
+                  placeholder="Your name"
+                  disabled={form.formState.isSubmitting}
+                  {...form.register("fullName")}
+                />
+              </FieldShell>
 
-          <FieldShell label="Confirm password" error={form.formState.errors.confirmPassword?.message}>
-            <Input
-              type="password"
-              autoComplete="new-password"
-              placeholder="Repeat your password"
-              disabled={form.formState.isSubmitting}
-              {...form.register("confirmPassword")}
-            />
-          </FieldShell>
+              <FieldShell label="Email" error={form.formState.errors.email?.message}>
+                <Input
+                  type="email"
+                  autoComplete="email"
+                  placeholder="you@example.com"
+                  disabled={form.formState.isSubmitting}
+                  {...form.register("email")}
+                />
+              </FieldShell>
 
-          <Button type="submit" disabled={form.formState.isSubmitting || !authAvailable}>
-            {form.formState.isSubmitting ? "Creating account..." : "Create account"}
-          </Button>
+              <FieldShell label="Password" error={form.formState.errors.password?.message}>
+                <Input
+                  type="password"
+                  autoComplete="new-password"
+                  placeholder="At least 8 characters"
+                  disabled={form.formState.isSubmitting}
+                  {...form.register("password")}
+                />
+              </FieldShell>
 
-          <p className="text-center text-sm text-muted-foreground">
-            Already have an account?{" "}
-            <Link to={ROUTES.login} className="font-medium text-primary underline-offset-4 hover:underline">
-              Log in
-            </Link>
-          </p>
-        </form>
+              <FieldShell label="Confirm password" error={form.formState.errors.confirmPassword?.message}>
+                <Input
+                  type="password"
+                  autoComplete="new-password"
+                  placeholder="Repeat your password"
+                  disabled={form.formState.isSubmitting}
+                  {...form.register("confirmPassword")}
+                />
+              </FieldShell>
+
+              <Button type="submit" disabled={form.formState.isSubmitting || !authAvailable}>
+                {form.formState.isSubmitting ? "Creating account..." : "Create account"}
+              </Button>
+            </form>
+          </TabsContent>
+        </Tabs>
+
+        <p className="text-center text-sm text-muted-foreground">
+          Already have an account?{" "}
+          <Link to={ROUTES.login} className="font-medium text-primary underline-offset-4 hover:underline">
+            Log in
+          </Link>
+        </p>
       </div>
     </AuthLayout>
   );

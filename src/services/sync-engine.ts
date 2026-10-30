@@ -1,15 +1,6 @@
-import {
-  collection,
-  doc,
-  getDocs,
-  orderBy,
-  query,
-  setDoc,
-  where
-} from "firebase/firestore";
 import { appDb, getOptionalTable } from "@/db/dexie";
 import { syncRepository } from "@/db/repositories/sync-repository";
-import { firestore } from "@/lib/firebase-client";
+import { supabase } from "@/lib/supabase-client";
 import type {
   Account,
   AppSettings,
@@ -23,9 +14,7 @@ import type {
 } from "@/types";
 import { nowIso } from "@/utils/date-utils";
 
-// Checkpoint prefix is bumped from the old Supabase engine ("finance-ledger-*") so
-// the one-time backend switch starts each entity's pull cursor fresh.
-const CHECKPOINT_PREFIX = "monilog-firestore-checkpoint";
+const CHECKPOINT_PREFIX = "moniilog-supabase-checkpoint";
 
 type SyncableRecord =
   | Account
@@ -35,105 +24,47 @@ type SyncableRecord =
   | AppSettings
   | NotificationPreference;
 
-function assertFirestore() {
-  if (!firestore) {
-    throw new Error("Firestore is not configured.");
+function assertSupabase() {
+  if (!supabase) {
+    throw new Error("Supabase is not configured.");
   }
-
-  return firestore;
+  return supabase;
 }
 
 function getCheckpointKey(entityName: SyncEntityName) {
   return `${CHECKPOINT_PREFIX}:${entityName}`;
 }
 
-function getCheckpoint(entityName: SyncEntityName) {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
+function getCheckpoint(entityName: SyncEntityName): string | null {
+  if (typeof window === "undefined") return null;
   return window.localStorage.getItem(getCheckpointKey(entityName));
 }
 
-function setCheckpoint(entityName: SyncEntityName, value: string) {
-  if (typeof window === "undefined") {
-    return;
-  }
-
+function setCheckpoint(entityName: SyncEntityName, value: string): void {
+  if (typeof window === "undefined") return;
   window.localStorage.setItem(getCheckpointKey(entityName), value);
 }
 
 function getSyncTable(entityName: SyncEntityName) {
-  if (entityName === "accounts") {
-    return appDb.accounts;
-  }
-
-  if (entityName === "categories") {
-    return appDb.categories;
-  }
-
-  if (entityName === "transactions") {
-    return appDb.transactions;
-  }
-
+  if (entityName === "accounts") return appDb.accounts;
+  if (entityName === "categories") return appDb.categories;
+  if (entityName === "transactions") return appDb.transactions;
   if (entityName === "transfers") {
-    const transfersTable = getOptionalTable<TransferRecord>("transfers");
-    if (!transfersTable) {
-      throw new Error("Transfers table is unavailable. Refresh the app and sign in again.");
-    }
-
-    return transfersTable;
+    const table = getOptionalTable<TransferRecord>("transfers");
+    if (!table) throw new Error("Transfers table is unavailable.");
+    return table;
   }
-
-  if (entityName === "settings") {
-    return appDb.settings;
-  }
-
+  if (entityName === "settings") return appDb.settings;
   return appDb.notificationPreferences;
 }
 
-// Firestore is schemaless, so records are stored with the app's camelCase field
-// names directly — no snake_case mapping. Only the local-only sync bookkeeping is
-// stripped. This keeps the Firestore shape identical to what the WhatsApp chatbot
-// will write.
-function toRemoteDoc(record: SyncableRecord) {
-  const {
-    remoteId: _remoteId,
-    syncStatus: _syncStatus,
-    syncError: _syncError,
-    lastSyncedAt: _lastSyncedAt,
-    ...rest
-  } = record as SyncableRecord & Partial<SyncableEntity>;
-  void _remoteId;
-  void _syncStatus;
-  void _syncError;
-  void _lastSyncedAt;
-  return rest;
-}
-
-function fromRemoteDoc(entityName: SyncEntityName, data: Record<string, unknown>): SyncableRecord {
-  const base = {
-    ...data,
-    remoteId: String(data.id),
-    syncStatus: "synced" as const,
-    syncError: null,
-    lastSyncedAt: nowIso()
-  };
-
-  // settings + notificationPreferences never carry deletedAt.
-  if (entityName === "settings" || entityName === "notificationPreferences") {
-    delete (base as Record<string, unknown>).deletedAt;
-  }
-
-  return base as unknown as SyncableRecord;
-}
-
 async function markLocalSynced(entityName: SyncEntityName, entityId: string, remoteId: string) {
-  const table = getSyncTable(entityName) as { get: (id: string) => Promise<SyncableRecord | undefined>; put: (record: SyncableRecord) => Promise<unknown> };
+  const table = getSyncTable(entityName) as {
+    get: (id: string) => Promise<SyncableRecord | undefined>;
+    put: (record: SyncableRecord) => Promise<unknown>;
+  };
   const record = await table.get(entityId);
-  if (!record) {
-    return;
-  }
+  if (!record) return;
 
   await table.put({
     ...record,
@@ -145,11 +76,12 @@ async function markLocalSynced(entityName: SyncEntityName, entityId: string, rem
 }
 
 async function markLocalFailed(entityName: SyncEntityName, entityId: string, errorMessage: string) {
-  const table = getSyncTable(entityName) as { get: (id: string) => Promise<SyncableRecord | undefined>; put: (record: SyncableRecord) => Promise<unknown> };
+  const table = getSyncTable(entityName) as {
+    get: (id: string) => Promise<SyncableRecord | undefined>;
+    put: (record: SyncableRecord) => Promise<unknown>;
+  };
   const record = await table.get(entityId);
-  if (!record) {
-    return;
-  }
+  if (!record) return;
 
   await table.put({
     ...record,
@@ -159,7 +91,7 @@ async function markLocalFailed(entityName: SyncEntityName, entityId: string, err
 }
 
 async function pushOperation(operation: SyncOperationRecord, userId: string) {
-  const db = assertFirestore();
+  const client = assertSupabase();
   const table = getSyncTable(operation.entityName);
   const record = (await table.get(operation.entityId)) as SyncableRecord | undefined;
 
@@ -168,15 +100,89 @@ async function pushOperation(operation: SyncOperationRecord, userId: string) {
     return;
   }
 
-  if (!record.userId) {
-    throw new Error("Local record is missing authenticated ownership.");
-  }
-
   await syncRepository.markProcessing(operation.id);
 
   try {
-    const ref = doc(db, "users", userId, operation.entityName, record.id);
-    await setDoc(ref, toRemoteDoc(record), { merge: true });
+    if (operation.entityName === "accounts") {
+      const a = record as Account;
+      const { error } = await client.from("accounts").upsert({
+        id: a.id,
+        user_id: userId,
+        preset_key: a.presetKey || null,
+        name: a.name,
+        type: a.type,
+        opening_balance_minor: Math.round((a.openingBalance || 0) * 100),
+        currency_code: a.currencyCode || "XAF",
+        is_default: a.isDefault ?? false,
+        display_order: a.displayOrder ?? 0,
+        balance_reset_at: a.balanceResetAt || null,
+        updated_at: a.updatedAt,
+        deleted_at: a.deletedAt || null
+      });
+      if (error) throw error;
+    } else if (operation.entityName === "categories") {
+      const c = record as Category;
+      const { error } = await client.from("categories").upsert({
+        id: c.id,
+        user_id: userId,
+        preset_key: c.presetKey || null,
+        name: c.name,
+        type: c.type,
+        icon_key: c.iconKey || null,
+        color_key: c.colorKey || null,
+        is_default: c.isDefault ?? false,
+        display_order: c.displayOrder ?? 0,
+        updated_at: c.updatedAt,
+        deleted_at: c.deletedAt || null
+      });
+      if (error) throw error;
+    } else if (operation.entityName === "transactions") {
+      const t = record as TransactionRecord;
+      const { error } = await client.from("transactions").upsert({
+        id: t.id,
+        user_id: userId,
+        account_id: t.accountId,
+        category_id: t.categoryId || null,
+        type: t.type,
+        amount_minor: Math.round((t.amount || 0) * 100),
+        currency_code: t.currencyCode || "XAF",
+        description: t.description || "",
+        affects_account_balance: t.affectsAccountBalance ?? true,
+        transaction_date: t.transactionDate,
+        updated_at: t.updatedAt,
+        deleted_at: t.deletedAt || null
+      });
+      if (error) throw error;
+    } else if (operation.entityName === "transfers") {
+      const tf = record as TransferRecord;
+      const { error } = await client.from("transfers").upsert({
+        id: tf.id,
+        user_id: userId,
+        from_account_id: tf.fromAccountId,
+        to_account_id: tf.toAccountId,
+        amount_minor: Math.round((tf.amount || 0) * 100),
+        source_fee_minor: Math.round((tf.sourceFee || 0) * 100),
+        destination_fee_minor: Math.round((tf.destinationFee || 0) * 100),
+        currency_code: tf.currencyCode || "XAF",
+        description: tf.description || "",
+        transfer_date: tf.transferDate,
+        updated_at: tf.updatedAt,
+        deleted_at: tf.deletedAt || null
+      });
+      if (error) throw error;
+    } else if (operation.entityName === "settings") {
+      const s = record as AppSettings;
+      const { error } = await client.from("profiles").upsert({
+        id: userId,
+        preferred_currency: s.currencyCode || "XAF",
+        preferred_language: s.language || "en",
+        theme_mode: s.themeMode || "system",
+        onboarding_completed: s.onboardingComplete ?? false,
+        tutorial_completed_ids: s.tutorialCompletedIds || "",
+        updated_at: s.updatedAt
+      });
+      if (error) throw error;
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : "Sync failed.";
     await markLocalFailed(operation.entityName, operation.entityId, message);
@@ -189,29 +195,152 @@ async function pushOperation(operation: SyncOperationRecord, userId: string) {
 }
 
 async function pullTable(entityName: SyncEntityName, userId: string) {
-  const db = assertFirestore();
+  const client = assertSupabase();
   const checkpoint = getCheckpoint(entityName);
-  const collectionRef = collection(db, "users", userId, entityName);
-  const constraints = checkpoint
-    ? [where("updatedAt", ">", checkpoint), orderBy("updatedAt", "asc")]
-    : [orderBy("updatedAt", "asc")];
-
-  const snapshot = await getDocs(query(collectionRef, ...constraints));
   const table = getSyncTable(entityName);
 
   let latestUpdatedAt: string | null = null;
 
-  for (const document of snapshot.docs) {
-    const data = document.data() as Record<string, unknown>;
-    const remoteRecord = fromRemoteDoc(entityName, data);
-    const localRecord = (await table.get(remoteRecord.id)) as SyncableRecord | undefined;
+  if (entityName === "accounts") {
+    let q = client.from("accounts").select("*").eq("user_id", userId).order("updated_at", { ascending: true });
+    if (checkpoint) q = q.gt("updated_at", checkpoint);
+    const { data } = await q;
 
-    if (!localRecord || remoteRecord.updatedAt >= localRecord.updatedAt) {
-      await table.put(remoteRecord as never);
+    for (const row of data ?? []) {
+      const remoteRecord: Account = {
+        id: row.id,
+        userId: row.user_id,
+        presetKey: row.preset_key,
+        name: row.name,
+        type: row.type,
+        openingBalance: Number(row.opening_balance_minor || 0) / 100,
+        currencyCode: row.currency_code,
+        isDefault: row.is_default,
+        displayOrder: row.display_order,
+        balanceResetAt: row.balance_reset_at,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+        deletedAt: row.deleted_at,
+        syncStatus: "synced",
+        syncError: null,
+        lastSyncedAt: nowIso()
+      };
+      const local = (await table.get(remoteRecord.id)) as Account | undefined;
+      if (!local || remoteRecord.updatedAt >= local.updatedAt) {
+        await table.put(remoteRecord as never);
+      }
+      latestUpdatedAt = row.updated_at;
     }
+  } else if (entityName === "categories") {
+    let q = client.from("categories").select("*").eq("user_id", userId).order("updated_at", { ascending: true });
+    if (checkpoint) q = q.gt("updated_at", checkpoint);
+    const { data } = await q;
 
-    if (typeof data.updatedAt === "string") {
-      latestUpdatedAt = data.updatedAt;
+    for (const row of data ?? []) {
+      const remoteRecord: Category = {
+        id: row.id,
+        userId: row.user_id,
+        presetKey: row.preset_key,
+        name: row.name,
+        type: row.type,
+        iconKey: row.icon_key,
+        colorKey: row.color_key,
+        isDefault: row.is_default,
+        displayOrder: row.display_order,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+        deletedAt: row.deleted_at,
+        syncStatus: "synced",
+        syncError: null,
+        lastSyncedAt: nowIso()
+      };
+      const local = (await table.get(remoteRecord.id)) as Category | undefined;
+      if (!local || remoteRecord.updatedAt >= local.updatedAt) {
+        await table.put(remoteRecord as never);
+      }
+      latestUpdatedAt = row.updated_at;
+    }
+  } else if (entityName === "transactions") {
+    let q = client.from("transactions").select("*").eq("user_id", userId).order("updated_at", { ascending: true });
+    if (checkpoint) q = q.gt("updated_at", checkpoint);
+    const { data } = await q;
+
+    for (const row of data ?? []) {
+      const remoteRecord: TransactionRecord = {
+        id: row.id,
+        userId: row.user_id,
+        accountId: row.account_id,
+        categoryId: row.category_id,
+        type: row.type,
+        amount: Number(row.amount_minor || 0) / 100,
+        currencyCode: row.currency_code,
+        description: row.description,
+        affectsAccountBalance: row.affects_account_balance,
+        transactionDate: row.transaction_date,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+        deletedAt: row.deleted_at,
+        syncStatus: "synced",
+        syncError: null,
+        lastSyncedAt: nowIso()
+      };
+      const local = (await table.get(remoteRecord.id)) as TransactionRecord | undefined;
+      if (!local || remoteRecord.updatedAt >= local.updatedAt) {
+        await table.put(remoteRecord as never);
+      }
+      latestUpdatedAt = row.updated_at;
+    }
+  } else if (entityName === "transfers") {
+    let q = client.from("transfers").select("*").eq("user_id", userId).order("updated_at", { ascending: true });
+    if (checkpoint) q = q.gt("updated_at", checkpoint);
+    const { data } = await q;
+
+    for (const row of data ?? []) {
+      const remoteRecord: TransferRecord = {
+        id: row.id,
+        userId: row.user_id,
+        fromAccountId: row.from_account_id,
+        toAccountId: row.to_account_id,
+        amount: Number(row.amount_minor || 0) / 100,
+        fee: (Number(row.source_fee_minor || 0) + Number(row.destination_fee_minor || 0)) / 100,
+        sourceFee: Number(row.source_fee_minor || 0) / 100,
+        destinationFee: Number(row.destination_fee_minor || 0) / 100,
+        currencyCode: row.currency_code,
+        description: row.description,
+        transferDate: row.transfer_date,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+        deletedAt: row.deleted_at,
+        syncStatus: "synced",
+        syncError: null,
+        lastSyncedAt: nowIso()
+      };
+      const local = (await table.get(remoteRecord.id)) as TransferRecord | undefined;
+      if (!local || remoteRecord.updatedAt >= local.updatedAt) {
+        await table.put(remoteRecord as never);
+      }
+      latestUpdatedAt = row.updated_at;
+    }
+  } else if (entityName === "settings") {
+    const { data: profile } = await client.from("profiles").select("*").eq("id", userId).maybeSingle();
+    if (profile) {
+      const local = (await table.get("app-settings")) as AppSettings | undefined;
+      if (!local || profile.updated_at >= local.updatedAt) {
+        await table.put({
+          id: "app-settings",
+          userId,
+          currencyCode: profile.preferred_currency || "XAF",
+          language: profile.preferred_language || "en",
+          themeMode: profile.theme_mode || "system",
+          onboardingCompleted: profile.onboarding_completed,
+          tutorialCompletedIds: profile.tutorial_completed_ids,
+          updatedAt: profile.updated_at,
+          syncStatus: "synced",
+          syncError: null,
+          lastSyncedAt: nowIso()
+        } as never);
+      }
+      latestUpdatedAt = profile.updated_at;
     }
   }
 
@@ -222,7 +351,7 @@ async function pullTable(entityName: SyncEntityName, userId: string) {
 
 export const syncEngine = {
   async run(userId: string) {
-    if (!navigator.onLine || !firestore) {
+    if (!navigator.onLine || !supabase) {
       return syncRepository.summarize();
     }
 
@@ -232,7 +361,7 @@ export const syncEngine = {
       try {
         await pushOperation(operation, userId);
       } catch {
-        // The local failure state has already been recorded, so the loop can continue.
+        // Individual failure logged; proceed with other queue items
       }
     }
 
@@ -241,8 +370,7 @@ export const syncEngine = {
       pullTable("categories", userId),
       pullTable("transactions", userId),
       pullTable("transfers", userId),
-      pullTable("settings", userId),
-      pullTable("notificationPreferences", userId)
+      pullTable("settings", userId)
     ]);
 
     return syncRepository.summarize();

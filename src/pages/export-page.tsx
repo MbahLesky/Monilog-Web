@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { PageShell } from "@/components/layout/page-shell";
 import { csvExportService } from "@/services/csv-export-service";
 import { ANALYTICS_EVENTS } from "@/lib/analytics-events";
-import { trackEvent } from "@/services/firebase-analytics-service";
+import { trackEvent } from "@/services/telemetry-service";
 import { formatShortDate } from "@/utils/date-utils";
 
 export function ExportPage() {

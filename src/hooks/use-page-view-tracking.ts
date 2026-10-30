@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useLocation } from "react-router-dom";
-import { trackPageView } from "@/services/firebase-analytics-service";
+import { trackPageView } from "@/services/telemetry-service";
 
 /**
  * Reports a page_view on every client-side route change. Firebase's automatic

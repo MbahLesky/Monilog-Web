@@ -9,7 +9,7 @@ import { useAuthStore } from "@/store/auth-store";
 
 export function AddTransactionPage() {
   const navigate = useNavigate();
-  const userId = useAuthStore((state) => state.user?.uid ?? null);
+  const userId = useAuthStore((state) => state.user?.id ?? null);
 
   return (
     <PageShell
@@ -27,7 +27,7 @@ export function AddTransactionPage() {
           <CardHeader>
             <CardTitle>Manual entry</CardTitle>
             <CardDescription>
-              Amount, type, category, account, note, and date are validated before Monilog saves locally.
+              Amount, type, category, account, note, and date are validated before Moniilog saves locally.
             </CardDescription>
           </CardHeader>
           <CardContent>

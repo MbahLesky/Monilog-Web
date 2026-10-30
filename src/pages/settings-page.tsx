@@ -1,8 +1,19 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { MessageSquare } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -15,17 +26,17 @@ import { settingsRepository } from "@/db/repositories/settings-repository";
 import { workspaceRepository } from "@/db/repositories/workspace-repository";
 import { jsonBackupService } from "@/services/json-backup-service";
 import { SUPPORTED_CURRENCIES } from "@/lib/constants";
+import { supabase } from "@/lib/supabase-client";
 import { ROUTES } from "@/routes/route-constants";
 import { useAuthStore } from "@/store/auth-store";
 import { useUiStore } from "@/store/ui-store";
 import type { AccountType, AppLanguage, TransactionType } from "@/types";
-import { useRef } from "react";
 
 export function SettingsPage() {
   const navigate = useNavigate();
   const profile = useAuthStore((state) => state.profile);
   const signOut = useAuthStore((state) => state.signOut);
-  const userId = useAuthStore((state) => state.user?.uid ?? null);
+  const userId = useAuthStore((state) => state.user?.id ?? null);
   const settings = useLiveQuery(() => settingsRepository.getSettings(), []);
   const reminderPreferences = useLiveQuery(() => settingsRepository.getNotificationPreferences(), []);
   const accounts = useLiveQuery(() => accountsRepository.listActive(), []);
@@ -39,6 +50,8 @@ export function SettingsPage() {
   const [newAccountType, setNewAccountType] = useState<AccountType>("other");
   const [newCategoryName, setNewCategoryName] = useState("");
   const [newCategoryType, setNewCategoryType] = useState<TransactionType>("expense");
+  const [linkCode, setLinkCode] = useState<string | null>(null);
+  const [linkCodeLoading, setLinkCodeLoading] = useState(false);
 
   useEffect(() => {
     if (!accounts) {
@@ -98,7 +111,8 @@ export function SettingsPage() {
         balance: Number(balance || 0)
       }))
     );
-    toast.success("Opening balances updated.");
+
+    toast.success("Opening balances saved.");
   }
 
   async function handleAddAccount() {
@@ -136,6 +150,30 @@ export function SettingsPage() {
     toast.success("Custom category added.");
   }
 
+  async function handleGenerateLinkCode() {
+    if (!supabase || !userId) {
+      toast.error("Database connection unavailable.");
+      return;
+    }
+    setLinkCodeLoading(true);
+    try {
+      const code = Math.floor(100000 + Math.random() * 900000).toString();
+      const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+      const { error } = await supabase.from("phone_link_codes").insert({
+        user_id: userId,
+        code,
+        expires_at: expiresAt
+      });
+      if (error) throw error;
+      setLinkCode(code);
+      toast.success("Link code generated. Valid for 15 minutes.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to generate link code.");
+    } finally {
+      setLinkCodeLoading(false);
+    }
+  }
+
   async function handleReset() {
     await workspaceRepository.resetAppData();
     toast.success("App data reset. Onboarding is starting over.");
@@ -157,17 +195,21 @@ export function SettingsPage() {
           <CardHeader>
             <CardTitle>Profile and session</CardTitle>
             <CardDescription>
-              Your name and email come from your Monilog account.
+              Your profile is synced across all Moniilog surfaces.
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4">
             <div className="rounded-xl border border-border/70 p-4">
               <p className="text-sm text-muted-foreground">Name</p>
-              <p className="mt-1 font-semibold">{profile?.name ?? "Not set"}</p>
+              <p className="mt-1 font-semibold">{profile?.name || "Not set"}</p>
             </div>
             <div className="rounded-xl border border-border/70 p-4">
               <p className="text-sm text-muted-foreground">Email</p>
-              <p className="mt-1 font-semibold">{profile?.email ?? "Unavailable"}</p>
+              <p className="mt-1 font-semibold">{profile?.email || "Unavailable"}</p>
+            </div>
+            <div className="rounded-xl border border-border/70 p-4">
+              <p className="text-sm text-muted-foreground">Phone Number</p>
+              <p className="mt-1 font-semibold">{profile?.phoneNumber || "Not connected"}</p>
             </div>
             <Button variant="outline" onClick={() => void handleSignOut()}>
               Log out
@@ -231,6 +273,59 @@ export function SettingsPage() {
         </Card>
       </div>
 
+      <Card className="border-primary/20 bg-gradient-to-br from-card to-primary/5">
+        <CardHeader>
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <MessageSquare className="size-5" />
+            </div>
+            <div>
+              <CardTitle>WhatsApp Assistant</CardTitle>
+              <CardDescription>
+                Track expenses, income, and check balances on WhatsApp without opening an app.
+              </CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="grid gap-4">
+          {profile?.phoneNumber ? (
+            <div className="flex items-center justify-between rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4">
+              <div>
+                <p className="font-semibold text-emerald-700 dark:text-emerald-300">WhatsApp Linked</p>
+                <p className="text-sm text-muted-foreground">Connected to {profile.phoneNumber}</p>
+              </div>
+              <span className="rounded-full bg-emerald-500/20 px-3 py-1 text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+                Active
+              </span>
+            </div>
+          ) : (
+            <div className="grid gap-3">
+              <p className="text-sm text-muted-foreground">
+                To link your WhatsApp number, generate a 6-digit code and reply to the Moniilog WhatsApp bot with: <strong className="text-foreground">LINK &lt;code&gt;</strong>.
+              </p>
+              {linkCode ? (
+                <div className="rounded-xl border border-primary/30 bg-primary/10 p-5 text-center">
+                  <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Your 6-Digit Linking Code</p>
+                  <p className="my-2 font-mono text-3xl font-extrabold tracking-widest text-primary">{linkCode}</p>
+                  <p className="text-xs text-muted-foreground">
+                    Send <span className="font-mono font-semibold text-foreground">LINK {linkCode}</span> to the bot. Code expires in 15 minutes.
+                  </p>
+                </div>
+              ) : (
+                <Button
+                  variant="outline"
+                  className="w-fit"
+                  onClick={() => void handleGenerateLinkCode()}
+                  disabled={linkCodeLoading || !userId}
+                >
+                  {linkCodeLoading ? "Generating..." : "Generate WhatsApp Link Code"}
+                </Button>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       <div className="grid gap-5 xl:grid-cols-[1fr,1fr]">
         <Card>
           <CardHeader>
@@ -287,7 +382,7 @@ export function SettingsPage() {
           <CardHeader>
             <CardTitle>Backup and restore</CardTitle>
             <CardDescription>
-              Export a JSON backup of your whole ledger, or restore one. Backups are interchangeable with the Monilog app.
+              Export a JSON backup of your whole ledger, or restore one. Backups are interchangeable with the Moniilog mobile app.
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3">
@@ -310,7 +405,7 @@ export function SettingsPage() {
         <Card>
           <CardHeader>
             <CardTitle>Guided tour</CardTitle>
-            <CardDescription>Replay the walkthrough of Monilog's main features any time.</CardDescription>
+            <CardDescription>Replay the walkthrough of Moniilog's main features any time.</CardDescription>
           </CardHeader>
           <CardContent>
             <Button variant="outline" onClick={() => startTour()}>

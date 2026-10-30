@@ -6,4 +6,5 @@ dist
 .env.*.local
 coverage
 *.log
+*.tsbuildinfo
 

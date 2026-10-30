@@ -1,15 +1,15 @@
 import { useEffect } from "react";
 import { useAuthStore } from "@/store/auth-store";
 import { useSyncStore } from "@/store/sync-store";
-import { initializeAnalytics } from "@/services/firebase-analytics-service";
-import { firebaseAuthService } from "@/services/firebase-auth-service";
-import { isFirebaseConfigured } from "@/lib/env";
+import { initializeAnalytics } from "@/services/telemetry-service";
+import { supabaseAuthService } from "@/services/supabase-auth-service";
+import { isSupabaseConfigured } from "@/lib/env";
 import { useLanguageSync } from "@/hooks/use-language-sync";
 
 export function AppBootstrap() {
   const bootstrap = useAuthStore((state) => state.bootstrap);
   const hydrateFromUser = useAuthStore((state) => state.hydrateFromUser);
-  const userId = useAuthStore((state) => state.user?.uid);
+  const userId = useAuthStore((state) => state.user?.id);
   const runNow = useSyncStore((state) => state.runNow);
   const refreshSync = useSyncStore((state) => state.refresh);
 
@@ -25,11 +25,11 @@ export function AppBootstrap() {
   }, []);
 
   useEffect(() => {
-    if (!isFirebaseConfigured) {
+    if (!isSupabaseConfigured) {
       return;
     }
 
-    const unsubscribe = firebaseAuthService.onAuthStateChange((user) => {
+    const unsubscribe = supabaseAuthService.onAuthStateChange((user) => {
       void hydrateFromUser(user);
     });
 

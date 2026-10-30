@@ -30,7 +30,7 @@ export function DashboardPage() {
   const settings = useLiveQuery(() => settingsRepository.getSettings(), []);
   const syncState = useSyncStatus();
   const isOnline = useNetworkStatus();
-  const userId = useAuthStore((state) => state.user?.uid);
+  const userId = useAuthStore((state) => state.user?.id);
   const selectedCurrencyCode = settings?.currencyCode ?? "XAF";
 
   const hasTransactions = (dashboard?.recentTransactions.length ?? 0) > 0;

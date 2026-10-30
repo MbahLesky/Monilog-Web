@@ -1,6 +1,6 @@
 import type { AccountType } from "@/types/common";
 
-export const APP_NAME = "Monilog";
+export const APP_NAME = "Moniilog";
 
 export const APP_TAGLINE = "Make financial tracking as easy as sending a message.";
 
