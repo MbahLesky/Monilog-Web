@@ -9,7 +9,6 @@ import { Input } from "@/components/ui/input";
 import { AuthDivider } from "@/features/auth/auth-divider";
 import { AuthLayout } from "@/features/auth/auth-layout";
 import { GoogleAuthButton } from "@/features/auth/google-auth-button";
-import { useInviteCode } from "@/features/auth/use-invite-code";
 import { registerSchema, type RegisterFormValues } from "@/features/auth/schemas";
 import { ROUTES } from "@/routes/route-constants";
 import { useAuthStore } from "@/store/auth-store";
@@ -23,28 +22,15 @@ export function RegisterPage() {
   const clearMessages = useAuthStore((state) => state.clearMessages);
   const [googleLoading, setGoogleLoading] = useState(false);
 
-  // Seeded from /register?code=LEADERS (or a code captured earlier in the session),
-  // so a tester following a partner link never retypes it.
-  const inviteCodeFromUrl = useInviteCode();
-
   const form = useForm<RegisterFormValues>({
     resolver: zodResolver(registerSchema),
     defaultValues: {
       fullName: "",
       email: "",
       password: "",
-      confirmPassword: "",
-      inviteCode: ""
+      confirmPassword: ""
     }
   });
-
-  const { setValue } = form;
-
-  useEffect(() => {
-    if (inviteCodeFromUrl) {
-      setValue("inviteCode", inviteCodeFromUrl);
-    }
-  }, [inviteCodeFromUrl, setValue]);
 
   useEffect(() => {
     return () => clearMessages();
@@ -52,7 +38,7 @@ export function RegisterPage() {
 
   async function onSubmit(values: RegisterFormValues) {
     try {
-      await signUp(values.fullName, values.email, values.password, values.inviteCode ?? "");
+      await signUp(values.fullName, values.email, values.password);
     } catch (submitError) {
       form.setError("root", {
         message: submitError instanceof Error ? submitError.message : "Unable to register."
@@ -64,7 +50,7 @@ export function RegisterPage() {
     form.clearErrors("root");
     setGoogleLoading(true);
     try {
-      await signInWithGoogle(form.getValues("inviteCode") ?? "");
+      await signInWithGoogle();
     } catch (submitError) {
       form.setError("root", {
         message: submitError instanceof Error ? submitError.message : "Google sign-in failed."
@@ -78,15 +64,15 @@ export function RegisterPage() {
 
   return (
     <AuthLayout
-      eyebrow="Create your account"
-      title="Register"
-      description="Start with a real authenticated identity, then move through currency, balances, reminders, and your ledger setup."
+      eyebrow="Get started"
+      title="Create your Moniilog account"
+      description="Create your account to manage accounts, track expenses, and sync your financial ledger."
     >
       <div className="grid gap-5">
         {!authAvailable ? (
           <Card className="border-dashed border-accent/30 bg-accent/5">
             <CardContent className="p-4 text-sm leading-6 text-muted-foreground">
-              Authentication is unavailable until valid Firebase configuration is provided.
+              Authentication configuration is required.
             </CardContent>
           </Card>
         ) : null}
@@ -98,114 +84,66 @@ export function RegisterPage() {
         ) : null}
 
         {formError ? (
-          <Card className="border-danger/20 bg-danger/5">
-            <CardContent className="p-4 text-sm text-danger">{formError}</CardContent>
+          <Card className="border-destructive/30 bg-destructive/5">
+            <CardContent className="p-4 text-sm text-destructive">{formError}</CardContent>
           </Card>
         ) : null}
 
-        <GoogleAuthButton
-          label="Sign up with Google"
-          disabled={!authAvailable || form.formState.isSubmitting}
-          isLoading={googleLoading}
-          onClick={() => void handleGoogle()}
-        />
+        <GoogleAuthButton onClick={handleGoogle} disabled={!authAvailable} loading={googleLoading} />
 
-        <AuthDivider label="or" />
+        <AuthDivider label="Or register with email" />
 
-        {/* eslint-disable-next-line @typescript-eslint/no-misused-promises */}
-        <form className="grid gap-5" onSubmit={form.handleSubmit(onSubmit)}>
-          <FieldShell
-            label="Full name"
-            htmlFor="fullName"
-            error={form.formState.errors.fullName?.message}
-          >
+        <form className="grid gap-4" onSubmit={form.handleSubmit(onSubmit)}>
+          <FieldShell label="Full name" error={form.formState.errors.fullName?.message}>
             <Input
-              id="fullName"
               autoComplete="name"
-              hasError={Boolean(form.formState.errors.fullName)}
+              placeholder="Your name"
+              disabled={form.formState.isSubmitting}
               {...form.register("fullName")}
             />
           </FieldShell>
 
-          <FieldShell label="Email" htmlFor="email" error={form.formState.errors.email?.message}>
+          <FieldShell label="Email" error={form.formState.errors.email?.message}>
             <Input
-              id="email"
               type="email"
               autoComplete="email"
-              hasError={Boolean(form.formState.errors.email)}
+              placeholder="you@example.com"
+              disabled={form.formState.isSubmitting}
               {...form.register("email")}
             />
           </FieldShell>
 
-          <div className="grid gap-5 md:grid-cols-2">
-            <FieldShell
-              label="Password"
-              htmlFor="password"
-              error={form.formState.errors.password?.message}
-            >
-              <Input
-                id="password"
-                type="password"
-                autoComplete="new-password"
-                hasError={Boolean(form.formState.errors.password)}
-                {...form.register("password")}
-              />
-            </FieldShell>
+          <FieldShell label="Password" error={form.formState.errors.password?.message}>
+            <Input
+              type="password"
+              autoComplete="new-password"
+              placeholder="At least 8 characters"
+              disabled={form.formState.isSubmitting}
+              {...form.register("password")}
+            />
+          </FieldShell>
 
-            <FieldShell
-              label="Confirm password"
-              htmlFor="confirmPassword"
-              error={form.formState.errors.confirmPassword?.message}
-            >
-              <Input
-                id="confirmPassword"
-                type="password"
-                autoComplete="new-password"
-                hasError={Boolean(form.formState.errors.confirmPassword)}
-                {...form.register("confirmPassword")}
-              />
-            </FieldShell>
-          </div>
+          <FieldShell label="Confirm password" error={form.formState.errors.confirmPassword?.message}>
+            <Input
+              type="password"
+              autoComplete="new-password"
+              placeholder="Repeat your password"
+              disabled={form.formState.isSubmitting}
+              {...form.register("confirmPassword")}
+            />
+          </FieldShell>
 
-          <div className="grid gap-2">
-            <FieldShell
-              label="Access code"
-              htmlFor="inviteCode"
-              hint="Optional"
-              error={form.formState.errors.inviteCode?.message}
-            >
-              <Input
-                id="inviteCode"
-                autoCapitalize="characters"
-                autoComplete="off"
-                placeholder="e.g. LEADERS"
-                hasError={Boolean(form.formState.errors.inviteCode)}
-                {...form.register("inviteCode", {
-                  setValueAs: (value: string) => value.trim().toUpperCase()
-                })}
-              />
-            </FieldShell>
-            <p className="text-xs leading-5 text-muted-foreground">
-              Have a code from an organization or partner? Enter it — otherwise leave it blank to
-              join as a general tester.
-            </p>
-          </div>
-
-          <Button
-            type="submit"
-            isLoading={form.formState.isSubmitting}
-            disabled={!authAvailable || googleLoading}
-          >
-            Register
+          <Button type="submit" disabled={form.formState.isSubmitting || !authAvailable}>
+            {form.formState.isSubmitting ? "Creating account..." : "Create account"}
           </Button>
-        </form>
 
-        <p className="text-sm text-muted-foreground">
-          Already have an account?{" "}
-          <Link className="font-semibold text-primary" to={ROUTES.login}>
-            Log in
-          </Link>
-        </p>
+          <p className="text-center text-sm text-muted-foreground">
+            Already have an account?{" "}
+            <Link to={ROUTES.login} className="font-medium text-primary underline-offset-4 hover:underline">
+              Log in
+            </Link>
+          </p>
+        </form>
       </div>
     </AuthLayout>
   );
