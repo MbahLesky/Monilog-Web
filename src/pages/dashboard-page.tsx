@@ -10,6 +10,8 @@ import {
   TrendingUp
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { BudgetManager } from "@/components/budget/budget-manager";
+import { RecurringManager } from "@/components/recurring/recurring-manager";
 import { EmptyState } from "@/components/data-display/empty-state";
 import { MetricCard } from "@/components/data-display/metric-card";
 import { SyncBanner } from "@/components/data-display/sync-banner";
@@ -134,6 +136,11 @@ export function DashboardPage() {
             ))}
           </CardContent>
         </Card>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <BudgetManager currencyCode={selectedCurrencyCode} />
+        <RecurringManager currencyCode={selectedCurrencyCode} />
       </div>
 
       {hasTransactions ? (

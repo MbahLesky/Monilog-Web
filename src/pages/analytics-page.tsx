@@ -15,6 +15,7 @@ import {
 import { EmptyState } from "@/components/data-display/empty-state";
 import { PageShell } from "@/components/layout/page-shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { BudgetManager } from "@/components/budget/budget-manager";
 import { settingsRepository } from "@/db/repositories/settings-repository";
 import { transactionsRepository } from "@/db/repositories/transactions-repository";
 import { formatCurrency } from "@/utils/formatting";
@@ -136,6 +137,10 @@ export function AnalyticsPage() {
             </ResponsiveContainer>
           </CardContent>
         </Card>
+      </div>
+
+      <div className="mt-6">
+        <BudgetManager currencyCode={selectedCurrencyCode} />
       </div>
     </PageShell>
   );

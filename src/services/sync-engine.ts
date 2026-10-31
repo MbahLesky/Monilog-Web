@@ -4,8 +4,10 @@ import { supabase } from "@/lib/supabase-client";
 import type {
   Account,
   AppSettings,
+  Budget,
   Category,
   NotificationPreference,
+  RecurringTransaction,
   SyncableEntity,
   SyncEntityName,
   SyncOperationRecord,
@@ -21,6 +23,8 @@ type SyncableRecord =
   | Category
   | TransactionRecord
   | TransferRecord
+  | Budget
+  | RecurringTransaction
   | AppSettings
   | NotificationPreference;
 
@@ -35,13 +39,11 @@ function getCheckpointKey(entityName: SyncEntityName) {
   return `${CHECKPOINT_PREFIX}:${entityName}`;
 }
 
-function getCheckpoint(entityName: SyncEntityName): string | null {
-  if (typeof window === "undefined") return null;
+function getCheckpoint(entityName: SyncEntityName) {
   return window.localStorage.getItem(getCheckpointKey(entityName));
 }
 
-function setCheckpoint(entityName: SyncEntityName, value: string): void {
-  if (typeof window === "undefined") return;
+function setCheckpoint(entityName: SyncEntityName, value: string) {
   window.localStorage.setItem(getCheckpointKey(entityName), value);
 }
 
@@ -54,6 +56,8 @@ function getSyncTable(entityName: SyncEntityName) {
     if (!table) throw new Error("Transfers table is unavailable.");
     return table;
   }
+  if (entityName === "budgets") return appDb.budgets;
+  if (entityName === "recurringTransactions") return appDb.recurringTransactions;
   if (entityName === "settings") return appDb.settings;
   return appDb.notificationPreferences;
 }
@@ -168,6 +172,33 @@ async function pushOperation(operation: SyncOperationRecord, userId: string) {
         transfer_date: tf.transferDate,
         updated_at: tf.updatedAt,
         deleted_at: tf.deletedAt || null
+      });
+      if (error) throw error;
+    } else if (operation.entityName === "budgets") {
+      const b = record as Budget;
+      const { error } = await client.from("budgets").upsert({
+        id: b.id,
+        user_id: userId,
+        category_id: b.categoryId,
+        amount_minor: Math.round((b.amount || 0) * 100),
+        period: b.period,
+        updated_at: b.updatedAt
+      });
+      if (error) throw error;
+    } else if (operation.entityName === "recurringTransactions") {
+      const r = record as RecurringTransaction;
+      const { error } = await client.from("recurring_transactions").upsert({
+        id: r.id,
+        user_id: userId,
+        account_id: r.accountId,
+        category_id: r.categoryId || null,
+        type: r.type,
+        amount_minor: Math.round((r.amount || 0) * 100),
+        description: r.description || "",
+        frequency: r.frequency,
+        next_occurrence: r.nextOccurrence,
+        is_active: r.isActive,
+        updated_at: r.updatedAt
       });
       if (error) throw error;
     } else if (operation.entityName === "settings") {
@@ -321,6 +352,61 @@ async function pullTable(entityName: SyncEntityName, userId: string) {
       }
       latestUpdatedAt = row.updated_at;
     }
+  } else if (entityName === "budgets") {
+    let q = client.from("budgets").select("*").eq("user_id", userId).order("updated_at", { ascending: true });
+    if (checkpoint) q = q.gt("updated_at", checkpoint);
+    const { data } = await q;
+
+    for (const row of data ?? []) {
+      const remoteRecord: Budget = {
+        id: row.id,
+        userId: row.user_id,
+        categoryId: row.category_id,
+        amount: Number(row.amount_minor || 0) / 100,
+        period: row.period,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+        deletedAt: null,
+        syncStatus: "synced",
+        syncError: null,
+        lastSyncedAt: nowIso()
+      };
+      const local = (await table.get(remoteRecord.id)) as Budget | undefined;
+      if (!local || remoteRecord.updatedAt >= local.updatedAt) {
+        await table.put(remoteRecord as never);
+      }
+      latestUpdatedAt = row.updated_at;
+    }
+  } else if (entityName === "recurringTransactions") {
+    let q = client.from("recurring_transactions").select("*").eq("user_id", userId).order("updated_at", { ascending: true });
+    if (checkpoint) q = q.gt("updated_at", checkpoint);
+    const { data } = await q;
+
+    for (const row of data ?? []) {
+      const remoteRecord: RecurringTransaction = {
+        id: row.id,
+        userId: row.user_id,
+        accountId: row.account_id,
+        categoryId: row.category_id,
+        type: row.type,
+        amount: Number(row.amount_minor || 0) / 100,
+        description: row.description,
+        frequency: row.frequency,
+        nextOccurrence: row.next_occurrence,
+        isActive: row.is_active,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+        deletedAt: null,
+        syncStatus: "synced",
+        syncError: null,
+        lastSyncedAt: nowIso()
+      };
+      const local = (await table.get(remoteRecord.id)) as RecurringTransaction | undefined;
+      if (!local || remoteRecord.updatedAt >= local.updatedAt) {
+        await table.put(remoteRecord as never);
+      }
+      latestUpdatedAt = row.updated_at;
+    }
   } else if (entityName === "settings") {
     const { data: profile } = await client.from("profiles").select("*").eq("id", userId).maybeSingle();
     if (profile) {
@@ -370,6 +456,8 @@ export const syncEngine = {
       pullTable("categories", userId),
       pullTable("transactions", userId),
       pullTable("transfers", userId),
+      pullTable("budgets", userId),
+      pullTable("recurringTransactions", userId),
       pullTable("settings", userId)
     ]);
 
@@ -410,6 +498,22 @@ export const syncEngine = {
         { event: "*", schema: "public", table: "transfers", filter: `user_id=eq.${userId}` },
         async () => {
           await pullTable("transfers", userId);
+          onUpdate?.();
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "budgets", filter: `user_id=eq.${userId}` },
+        async () => {
+          await pullTable("budgets", userId);
+          onUpdate?.();
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "recurring_transactions", filter: `user_id=eq.${userId}` },
+        async () => {
+          await pullTable("recurringTransactions", userId);
           onUpdate?.();
         }
       )

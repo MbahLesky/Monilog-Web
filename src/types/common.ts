@@ -19,7 +19,9 @@ export type SyncEntityName =
   | "transactions"
   | "transfers"
   | "settings"
-  | "notificationPreferences";
+  | "notificationPreferences"
+  | "budgets"
+  | "recurringTransactions";
 
 export type SyncOperationType = "create" | "update" | "delete";
 

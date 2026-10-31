@@ -2,10 +2,12 @@ import Dexie, { type IndexableType, type Table } from "dexie";
 import type {
   Account,
   AppSettings,
+  Budget,
   Category,
   ExportRecord,
   ImportRecord,
   NotificationPreference,
+  RecurringTransaction,
   SyncOperationRecord,
   TransferRecord,
   TransactionRecord
@@ -16,6 +18,8 @@ export class FinanceLedgerDatabase extends Dexie {
   categories!: Table<Category, string>;
   transactions!: Table<TransactionRecord, string>;
   transfers!: Table<TransferRecord, string>;
+  budgets!: Table<Budget, string>;
+  recurringTransactions!: Table<RecurringTransaction, string>;
   settings!: Table<AppSettings, string>;
   notificationPreferences!: Table<NotificationPreference, string>;
   importRecords!: Table<ImportRecord, string>;
@@ -123,10 +127,30 @@ export class FinanceLedgerDatabase extends Dexie {
         });
       });
 
+    // v4 adds budgets and recurring transactions
+    this.version(4).stores({
+      accounts: "id, userId, name, type, syncStatus, updatedAt, deletedAt, displayOrder",
+      categories: "id, userId, [type+name], syncStatus, updatedAt, deletedAt, isDefault",
+      transactions:
+        "id, userId, accountId, categoryId, transactionDate, type, syncStatus, updatedAt, deletedAt",
+      transfers:
+        "id, userId, fromAccountId, toAccountId, transferDate, syncStatus, updatedAt, deletedAt",
+      budgets: "id, userId, categoryId, period, syncStatus, updatedAt, deletedAt",
+      recurringTransactions:
+        "id, userId, accountId, categoryId, nextOccurrence, isActive, syncStatus, updatedAt, deletedAt",
+      settings: "id, userId, updatedAt, onboardingComplete",
+      notificationPreferences: "id, userId, updatedAt, enabled",
+      importRecords: "id, createdAt, status",
+      exportRecords: "id, createdAt",
+      syncOperations: "id, entityName, entityId, [entityName+entityId], status, updatedAt, createdAt"
+    });
+
     this.accounts = this.table("accounts");
     this.categories = this.table("categories");
     this.transactions = this.table("transactions");
     this.transfers = this.table("transfers");
+    this.budgets = this.table("budgets");
+    this.recurringTransactions = this.table("recurringTransactions");
     this.settings = this.table("settings");
     this.notificationPreferences = this.table("notificationPreferences");
     this.importRecords = this.table("importRecords");
