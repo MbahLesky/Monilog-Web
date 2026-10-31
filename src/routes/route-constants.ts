@@ -11,6 +11,7 @@ export const ROUTES = {
   addTransaction: "/transactions/new",
   transfer: "/transfer",
   analytics: "/analytics",
+  chat: "/chat",
   settings: "/settings",
   importData: "/settings/import",
   exportData: "/settings/export"

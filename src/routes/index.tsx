@@ -2,6 +2,7 @@ import { RouterProvider, createBrowserRouter } from "react-router-dom";
 import { AppShell } from "@/components/layout/app-shell";
 import { AddTransactionPage } from "@/pages/add-transaction-page";
 import { AnalyticsPage } from "@/pages/analytics-page";
+import { ChatAssistantPage } from "@/pages/chat-page";
 import { DashboardPage } from "@/pages/dashboard-page";
 import { ExportPage } from "@/pages/export-page";
 import { ImportPage } from "@/pages/import-page";
@@ -91,6 +92,10 @@ const router = createBrowserRouter([
               {
                 path: ROUTES.analytics,
                 element: <AnalyticsPage />
+              },
+              {
+                path: ROUTES.chat,
+                element: <ChatAssistantPage />
               },
               {
                 path: ROUTES.settings,

@@ -1,4 +1,4 @@
-import { ArrowRightLeft, Download, LayoutDashboard, LineChart, Plus, ReceiptText, Settings2 } from "lucide-react";
+import { ArrowRightLeft, Bot, Download, LayoutDashboard, LineChart, Plus, ReceiptText, Settings2 } from "lucide-react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { BrandLogo } from "@/components/navigation/brand-logo";
@@ -29,6 +29,12 @@ const navigationItems = [
     tKey: "nav.analytics",
     icon: LineChart,
     to: ROUTES.analytics
+  },
+  {
+    tKey: "nav.chat",
+    label: "Assistant",
+    icon: Bot,
+    to: ROUTES.chat
   },
   {
     tKey: "nav.settings",
