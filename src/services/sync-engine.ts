@@ -374,5 +374,49 @@ export const syncEngine = {
     ]);
 
     return syncRepository.summarize();
+  },
+
+  subscribeRealtime(userId: string, onUpdate?: () => void) {
+    if (!supabase) return () => {};
+
+    const channel = supabase
+      .channel(`realtime-ledger-${userId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "transactions", filter: `user_id=eq.${userId}` },
+        async () => {
+          await pullTable("transactions", userId);
+          onUpdate?.();
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "accounts", filter: `user_id=eq.${userId}` },
+        async () => {
+          await pullTable("accounts", userId);
+          onUpdate?.();
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "categories", filter: `user_id=eq.${userId}` },
+        async () => {
+          await pullTable("categories", userId);
+          onUpdate?.();
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "transfers", filter: `user_id=eq.${userId}` },
+        async () => {
+          await pullTable("transfers", userId);
+          onUpdate?.();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase?.removeChannel(channel);
+    };
   }
 };

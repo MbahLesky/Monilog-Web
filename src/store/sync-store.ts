@@ -7,6 +7,7 @@ interface SyncState extends SyncSummary {
   error: string | null;
   refresh: () => Promise<void>;
   runNow: (userId: string) => Promise<void>;
+  initRealtime: (userId: string) => () => void;
 }
 
 const initialSummary: SyncSummary = {
@@ -16,12 +17,17 @@ const initialSummary: SyncSummary = {
   lastSyncedAt: null
 };
 
-export const useSyncStore = create<SyncState>((set) => ({
+export const useSyncStore = create<SyncState>((set, get) => ({
   ...initialSummary,
   error: null,
   refresh: async () => {
     const summary = await syncRepository.summarize();
     set({ ...summary });
+  },
+  initRealtime: (userId: string) => {
+    return syncEngine.subscribeRealtime(userId, () => {
+      get().refresh();
+    });
   },
   runNow: async (userId) => {
     set({ processing: true, error: null });

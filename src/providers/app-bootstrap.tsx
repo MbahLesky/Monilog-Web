@@ -12,8 +12,15 @@ export function AppBootstrap() {
   const userId = useAuthStore((state) => state.user?.id);
   const runNow = useSyncStore((state) => state.runNow);
   const refreshSync = useSyncStore((state) => state.refresh);
+  const initRealtime = useSyncStore((state) => state.initRealtime);
 
   useLanguageSync();
+
+  useEffect(() => {
+    if (!userId || !isSupabaseConfigured) return;
+    const cleanup = initRealtime(userId);
+    return cleanup;
+  }, [initRealtime, userId]);
 
   useEffect(() => {
     void bootstrap();
