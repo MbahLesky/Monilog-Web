@@ -95,10 +95,15 @@ export function RegisterPage() {
 
         <AuthDivider label="Or create account with" />
 
-        <Tabs defaultValue="phone" className="w-full">
+        <Tabs defaultValue="email" className="w-full">
           <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="phone">Phone / WhatsApp</TabsTrigger>
             <TabsTrigger value="email">Email</TabsTrigger>
+            <TabsTrigger value="phone" className="gap-1.5">
+              <span>Phone</span>
+              <span className="rounded bg-amber-500/15 px-1 py-0.2 text-[10px] font-semibold text-amber-600 dark:text-amber-400">
+                Soon
+              </span>
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="phone" className="pt-2">

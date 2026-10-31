@@ -52,6 +52,15 @@ export function PhoneAuthForm({ disabled }: { disabled?: boolean }) {
   if (targetPhone) {
     return (
       <form className="grid gap-4" onSubmit={otpForm.handleSubmit(onVerifyOtp)}>
+        <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-400">
+          <div className="flex items-center gap-1.5 font-semibold">
+            <span className="inline-block h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
+            SMS Verification Notice
+          </div>
+          <p className="mt-1 text-muted-foreground">
+            Carrier SMS gateway is currently in preview. Test phone numbers with pre-configured OTPs are supported.
+          </p>
+        </div>
         {otpForm.formState.errors.root ? (
           <p className="text-sm font-medium text-destructive">
             {otpForm.formState.errors.root.message}
@@ -95,6 +104,15 @@ export function PhoneAuthForm({ disabled }: { disabled?: boolean }) {
 
   return (
     <form className="grid gap-4" onSubmit={phoneForm.handleSubmit(onRequestOtp)}>
+      <div className="rounded-lg border border-amber-500/25 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-400">
+        <div className="flex items-center gap-1.5 font-semibold">
+          <span className="inline-block h-2 w-2 rounded-full bg-amber-500" />
+          SMS Phone Authentication (Coming Soon)
+        </div>
+        <p className="mt-1 text-muted-foreground">
+          Direct carrier SMS delivery is currently undergoing certification. You can sign in using Email or Google today, and link your phone anytime in Settings.
+        </p>
+      </div>
       {phoneForm.formState.errors.root ? (
         <p className="text-sm font-medium text-destructive">
           {phoneForm.formState.errors.root.message}
