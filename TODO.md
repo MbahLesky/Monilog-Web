@@ -19,7 +19,7 @@
 ---
 
 ## 2. Current / In-Progress Tasks
-- [ ] **WEB-010: Domain Alignment to `web.moniilog.com`**: Update web manifest, canonical links, and redirect URLs to `web.moniilog.com`.
+- ~~[x] **WEB-010: Domain Alignment to `web.moniilog.com`**: Update web manifest, canonical links, and redirect URLs to `web.moniilog.com`~~
 - [ ] **WEB-011: Multi-Device Sync Verification**: Validate real-time record reflection on Web when changes occur on Mobile or WhatsApp.
 - [ ] **WEB-012: WhatsApp Linking Modal**: Create UI dialog displaying a QR code / deep link to pair user account with WhatsApp bot.
 
