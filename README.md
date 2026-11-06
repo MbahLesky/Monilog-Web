@@ -4,6 +4,9 @@
 
 Moniilog Web is a high-performance, offline-capable Progressive Web App (PWA) built with React 18, Vite, TypeScript, Tailwind CSS, and Dexie.js (IndexedDB). It syncs in real time with the central Moniilog Supabase PostgreSQL database.
 
+- **Production Domain:** `https://web.moniilog.com`
+- **Main Website:** `https://moniilog.com`
+
 ---
 
 ## Key Features
@@ -19,29 +22,9 @@ Moniilog Web is a high-performance, offline-capable Progressive Web App (PWA) bu
 
 ---
 
-## Web Task Registry & Roadmap
+## Task Registry & Roadmap
 
-> [!IMPORTANT]
-> **Workflow Protocol:** Tasks specific to the web application are tracked here. When completed, tasks are struck through (`~~[x] ...~~`). Proposed tasks must be approved before implementation.
-
-### Completed Web Milestones
-- ~~[x] **WEB-001:** Build responsive desktop and mobile web interface with Tailwind CSS and Radix UI~~
-- ~~[x] **WEB-002:** Implement Dexie.js IndexedDB local storage mirroring backend financial tables~~
-- ~~[x] **WEB-003:** Integrate Supabase Authentication (Email/Password, Google OAuth, Google One-Tap)~~
-- ~~[x] **WEB-004:** Implement background delta synchronization engine with Supabase Realtime channels~~
-- ~~[x] **WEB-005:** Create Financial Dashboard with net worth, monthly cash flow, and spending breakdown charts~~
-- ~~[x] **WEB-006:** Implement Budget Manager and Recurring Transaction Manager interfaces~~
-- ~~[x] **WEB-007:** Implement CSV statement import with column mapping and duplicate detection~~
-- ~~[x] **WEB-008:** Integrate In-App Financial Assistant chatbot interface~~
-- ~~[x] **WEB-009:** Configure PWA manifest and service worker for desktop/mobile installability~~
-
-### Current / In-Progress Tasks
-- [ ] **WEB-010: Multi-Device Sync Verification**: Validate real-time record reflection on Web when changes occur on Mobile or WhatsApp.
-- [ ] **WEB-011: WhatsApp Linking Modal**: Create UI dialog displaying a QR code / deep link to pair user account with WhatsApp bot.
-
-### Proposed Upcoming Tasks (Pending Approval)
-- [ ] **WEB-012: PDF Statement Export**: Export formatted monthly income/expense statements directly in browser.
-- [ ] **WEB-013: Production Deployment**: Configure CI/CD and deploy to Vercel or Firebase App Hosting.
+All active, completed, and proposed roadmap tasks for the web app are managed in [**TODO.md**](./TODO.md).
 
 ---
 
