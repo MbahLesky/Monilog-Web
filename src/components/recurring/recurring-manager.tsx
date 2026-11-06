@@ -325,3 +325,4 @@ export function RecurringManager({ currencyCode }: RecurringManagerProps) {
     </Card>
   );
 }
+

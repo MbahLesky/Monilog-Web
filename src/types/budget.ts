@@ -7,3 +7,4 @@ export interface Budget extends SyncableEntity {
   amount: number; // in major units (e.g. 50000 XAF)
   period: BudgetPeriod;
 }
+

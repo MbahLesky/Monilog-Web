@@ -12,3 +12,4 @@ export interface RecurringTransaction extends SyncableEntity {
   nextOccurrence: string;
   isActive: boolean;
 }
+
