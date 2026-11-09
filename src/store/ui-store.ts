@@ -13,7 +13,7 @@ interface UiState {
 }
 
 export const useUiStore = create<UiState>((set) => ({
-  themeMode: "system",
+  themeMode: "dark",
   isTransactionComposerOpen: false,
   tourNonce: 0,
   setThemeMode: (themeMode) => set({ themeMode }),

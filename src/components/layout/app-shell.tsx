@@ -49,29 +49,29 @@ export function AppShell() {
   const { t } = useTranslation();
 
   return (
-    <div className="min-h-screen pb-24 lg:pb-0">
+    <div className="min-h-screen pb-20 lg:pb-0">
       <AppTour />
-      <div className="mx-auto flex min-h-screen max-w-[1600px]">
-        <aside className="hidden w-80 shrink-0 border-r border-border/70 bg-card/75 px-6 py-6 backdrop-blur lg:flex lg:flex-col">
+      <div className="mx-auto flex min-h-screen max-w-[1480px]">
+        <aside className="hidden w-60 shrink-0 border-r border-border/70 bg-card/75 px-4 py-4 backdrop-blur lg:flex lg:flex-col">
           <BrandLogo />
-          <div className="mt-8 rounded-2xl bg-brand-gradient p-5 text-primary-foreground shadow-card">
-            <p className="text-sm font-medium text-primary-foreground/78">Fast capture</p>
-            <h2 className="mt-2 text-2xl font-bold">Track what changed, even offline.</h2>
-            <p className="mt-3 text-sm leading-6 text-primary-foreground/84">
+          <div className="mt-5 rounded-xl bg-brand-gradient p-3.5 text-primary-foreground shadow-card">
+            <p className="text-[11px] font-medium text-primary-foreground/80">Fast capture</p>
+            <h2 className="mt-1 text-base font-bold leading-snug">Track what changed, even offline.</h2>
+            <p className="mt-1.5 text-xs leading-relaxed text-primary-foreground/85">
               Local-first entries keep your ledger useful in weak connectivity and ready to sync later.
             </p>
           </div>
-          <nav className="mt-8 grid gap-2">
+          <nav className="mt-5 grid gap-1.5">
             {navigationItems.map((item) => (
               <NavLink
                 key={item.to}
                 to={item.to}
                 className={({ isActive }) =>
                   cn(
-                    "flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition-all",
+                    "flex items-center gap-2.5 rounded-lg px-3 py-2 text-xs font-semibold transition-all",
                     isActive
                       ? "bg-primary text-primary-foreground shadow-card"
-                      : "text-muted-foreground hover:bg-primary/5 hover:text-primary"
+                      : "text-muted-foreground hover:bg-primary/10 hover:text-primary"
                   )
                 }
               >
@@ -80,9 +80,8 @@ export function AppShell() {
               </NavLink>
             ))}
           </nav>
-          <div className="mt-auto grid gap-3">
+          <div className="mt-auto grid gap-2 pt-4">
             <Button
-              size="lg"
               className="w-full"
               onClick={() => navigate(ROUTES.addTransaction, { state: { backgroundLocation: location } })}
             >
@@ -91,35 +90,39 @@ export function AppShell() {
             </Button>
             <Button
               variant="outline"
+              size="sm"
               className="w-full"
               onClick={() => navigate(ROUTES.transfer)}
             >
-              <ArrowRightLeft className="size-4" />
+              <ArrowRightLeft className="size-3.5" />
               {t("nav.transferMoney")}
             </Button>
             <Button
               variant="ghost"
+              size="sm"
               className="w-full"
               onClick={() => navigate(ROUTES.exportData)}
             >
-              <Download className="size-4" />
+              <Download className="size-3.5" />
               {t("nav.exportData")}
             </Button>
           </div>
         </aside>
 
-        <main className="flex-1">
+        <main className="flex-1 min-w-0">
           <header className="sticky top-0 z-30 border-b border-border/70 bg-background/85 backdrop-blur">
-            <div className="container flex h-20 items-center justify-between gap-4">
+            <div className="container flex h-14 items-center justify-between gap-4">
               <BrandLogo compact />
-              <div className="hidden items-center gap-3 sm:flex">
+              <div className="hidden items-center gap-2.5 sm:flex">
                 <Button
                   variant="outline"
+                  size="sm"
                   onClick={() => navigate(ROUTES.importData)}
                 >
                   {t("nav.import")}
                 </Button>
                 <Button
+                  size="sm"
                   onClick={() => navigate(ROUTES.addTransaction, { state: { backgroundLocation: location } })}
                 >
                   <Plus className="size-4" />
@@ -129,7 +132,7 @@ export function AppShell() {
             </div>
           </header>
 
-          <div className="container py-6 lg:py-8">
+          <div className="container py-5 lg:py-6">
             <Outlet />
           </div>
         </main>

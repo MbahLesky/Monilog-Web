@@ -27,23 +27,23 @@ export function MetricCard({
 
   return (
     <Card className="overflow-hidden">
-      <CardContent className="flex items-start justify-between gap-4 p-6">
-        <div className="space-y-3">
-          <p className="text-sm font-medium text-muted-foreground">{label}</p>
-          <p className="text-2xl font-bold tracking-tight sm:text-3xl">{value}</p>
+      <CardContent className="flex items-start justify-between gap-3 p-4">
+        <div className="space-y-1.5 min-w-0">
+          <p className="text-xs font-medium text-muted-foreground">{label}</p>
+          <p className="text-lg font-bold tracking-tight sm:text-xl truncate">{value}</p>
           {trendLabel ? (
-            <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+            <div className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
               {tone === "accent" ? (
-                <ArrowDownRight className="size-3.5 text-accent" />
+                <ArrowDownRight className="size-3 text-accent shrink-0" />
               ) : (
-                <ArrowUpRight className="size-3.5 text-secondary" />
+                <ArrowUpRight className="size-3 text-secondary shrink-0" />
               )}
-              {trendLabel}
+              <span className="truncate">{trendLabel}</span>
             </div>
           ) : null}
         </div>
-        <div className={cn("flex h-12 w-12 items-center justify-center rounded-2xl", toneClasses)}>
-          <Icon className="size-5" />
+        <div className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-xl", toneClasses)}>
+          <Icon className="size-4" />
         </div>
       </CardContent>
     </Card>

@@ -59,8 +59,8 @@ export type SettingsTabId =
   | "backup_restore"
   | "tutorials";
 
-const APP_VERSION = "1.3.0";
-const APP_BUILD = "6";
+const APP_VERSION = "1.3.1";
+const APP_BUILD = "7";
 
 export function SettingsPage() {
   const navigate = useNavigate();
@@ -319,14 +319,14 @@ export function SettingsPage() {
       title="Settings"
       description="Select a category below to configure your profile, currency, accounts, security, exports, and preferences."
     >
-      <div className="grid gap-6 lg:grid-cols-[340px,1fr]">
+      <div className="grid gap-4 lg:grid-cols-[260px,minmax(0,1fr)] items-start">
         {/* Left Navigation List of 10 Clickable Tabs/Items */}
-        <Card className="h-fit">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">Settings Menu</CardTitle>
-            <CardDescription>Click any item to open its settings</CardDescription>
+        <Card className="h-fit min-w-0 overflow-hidden">
+          <CardHeader className="pb-2 px-3 pt-3">
+            <CardTitle className="text-sm">Settings Menu</CardTitle>
+            <CardDescription className="text-[11px]">Click an item to open its settings</CardDescription>
           </CardHeader>
-          <CardContent className="grid gap-1.5 p-3 pt-0">
+          <CardContent className="grid gap-1 p-2 pt-0">
             {tabs.map((tab) => {
               const Icon = tab.icon;
               const isSelected = activeTab === tab.id;
@@ -335,35 +335,35 @@ export function SettingsPage() {
                   key={tab.id}
                   type="button"
                   onClick={() => setActiveTab(tab.id)}
-                  className={`flex w-full items-center justify-between rounded-xl border px-3.5 py-3 text-left transition-all ${
+                  className={`flex w-full min-w-0 items-center justify-between gap-2 overflow-hidden rounded-lg border px-2.5 py-2 text-left transition-all ${
                     isSelected
                       ? "border-primary bg-primary/10 text-foreground shadow-sm"
                       : "border-transparent hover:border-border/70 hover:bg-muted/60"
                   }`}
                 >
-                  <div className="flex items-center gap-3 min-w-0">
+                  <div className="flex items-center gap-2.5 min-w-0 flex-1 overflow-hidden">
                     <div
-                      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
+                      className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${
                         isSelected
                           ? "bg-primary text-primary-foreground"
                           : "bg-muted text-muted-foreground"
                       }`}
                     >
-                      <Icon className="size-4" />
+                      <Icon className="size-3.5" />
                     </div>
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold leading-tight truncate">{tab.title}</p>
-                      <p className="mt-0.5 text-xs text-muted-foreground truncate">{tab.subtitle}</p>
+                    <div className="min-w-0 flex-1 overflow-hidden">
+                      <p className="text-xs font-semibold leading-tight truncate">{tab.title}</p>
+                      <p className="mt-0.5 text-[11px] text-muted-foreground truncate">{tab.subtitle}</p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0 ml-2">
+                  <div className="flex items-center gap-1 shrink-0">
                     {tab.badge ? (
-                      <span className="rounded-md bg-muted px-2 py-0.5 text-[11px] font-semibold text-muted-foreground">
+                      <span className="max-w-[72px] truncate rounded bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">
                         {tab.badge}
                       </span>
                     ) : null}
                     <ChevronRight
-                      className={`size-4 transition-transform ${
+                      className={`size-3.5 shrink-0 transition-transform ${
                         isSelected ? "translate-x-0.5 text-primary" : "text-muted-foreground"
                       }`}
                     />
@@ -375,7 +375,7 @@ export function SettingsPage() {
         </Card>
 
         {/* Right Detail Panel for Selected Tab */}
-        <div className="grid gap-5 content-start">
+        <div className="grid gap-4 content-start min-w-0 overflow-hidden">
           {activeTab === "profile" && (
             <>
               <Card>

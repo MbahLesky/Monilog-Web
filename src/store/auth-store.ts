@@ -7,20 +7,25 @@ import { identifyUser, trackEvent } from "@/services/telemetry-service";
 import { supabaseAuthService } from "@/services/supabase-auth-service";
 import { useSyncStore } from "@/store/sync-store";
 import type { Profile } from "@/types";
+import { settingsRepository } from "@/db/repositories/settings-repository";
 import { workspaceRepository } from "@/db/repositories/workspace-repository";
 import { nowIso } from "@/utils/date-utils";
 
 type AuthStatus = "checking" | "signed_out" | "signed_in";
 
+let hydratingUserId: string | null = null;
+
 interface AuthState {
   status: AuthStatus;
+  isGuest: boolean;
   authAvailable: boolean;
   user: User | null;
   profile: Profile | null;
   error: string | null;
   notice: string | null;
   bootstrap: () => Promise<void>;
-  hydrateFromUser: (user: User | null) => Promise<void>;
+  hydrateFromUser: (user: User | null, options?: { isNewRegistration?: boolean }) => Promise<void>;
+  continueAsGuest: () => void;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (fullName: string, email: string, password: string) => Promise<void>;
   signInWithPhoneOtp: (phone: string) => Promise<void>;
@@ -67,11 +72,21 @@ function isProfileComplete(profile: Profile | null): boolean {
 
 export const useAuthStore = create<AuthState>((set, get) => ({
   status: "checking",
+  isGuest: false,
   authAvailable: isSupabaseConfigured,
   user: null,
   profile: null,
   error: null,
   notice: null,
+
+  continueAsGuest: () => {
+    set({
+      status: "signed_out",
+      isGuest: true,
+      error: null,
+      notice: null
+    });
+  },
 
   bootstrap: async () => {
     // Initial session is restored and managed by supabase.auth.onAuthStateChange
@@ -92,32 +107,55 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
-  hydrateFromUser: async (user) => {
+  hydrateFromUser: async (user, options) => {
     if (!user) {
-      set({
+      hydratingUserId = null;
+      set((state) => ({
         status: "signed_out",
+        isGuest: state.isGuest,
         user: null,
         profile: null
-      });
+      }));
       return;
     }
 
-    identifyUser(user.id);
+    if (hydratingUserId === user.id || (get().status === "signed_in" && get().user?.id === user.id)) {
+      return;
+    }
 
-    set({
-      status: "signed_in",
-      user,
-      profile: profileFromUser(user),
-      error: null
-    });
+    hydratingUserId = user.id;
+    identifyUser(user.id);
 
     try {
       await workspaceRepository.releaseStaleOwnership(user.id);
       await useSyncStore.getState().runNow(user.id);
+      if (!options?.isNewRegistration) {
+        const currentSettings = await settingsRepository.getSettings();
+        if (!currentSettings.onboardingComplete) {
+          await settingsRepository.setOnboardingComplete(true);
+        }
+      }
       await workspaceRepository.stampOwnership(user.id);
+      await useSyncStore.getState().runNow(user.id);
     } catch {
-      // Offline or transient sync errors are handled by SyncStore
+      if (!options?.isNewRegistration) {
+        try {
+          await settingsRepository.setOnboardingComplete(true);
+        } catch {
+          // Ignore if DB unavailable
+        }
+      }
+    } finally {
+      hydratingUserId = null;
     }
+
+    set({
+      status: "signed_in",
+      isGuest: false,
+      user,
+      profile: profileFromUser(user),
+      error: null
+    });
   },
 
   signIn: async (email, password) => {
@@ -138,7 +176,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     });
 
     trackEvent(ANALYTICS_EVENTS.signUpCompleted, { method: "email_password" });
-    await get().hydrateFromUser(user);
+    await get().hydrateFromUser(user, { isNewRegistration: true });
   },
 
   signInWithPhoneOtp: async (phone: string) => {
@@ -189,6 +227,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
     set({
       status: "signed_out",
+      isGuest: false,
       user: null,
       profile: null,
       error: null,

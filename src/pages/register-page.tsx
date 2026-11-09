@@ -19,6 +19,7 @@ export function RegisterPage() {
   const authAvailable = useAuthStore((state) => state.authAvailable);
   const signUp = useAuthStore((state) => state.signUp);
   const signInWithGoogle = useAuthStore((state) => state.signInWithGoogle);
+  const continueAsGuest = useAuthStore((state) => state.continueAsGuest);
   const error = useAuthStore((state) => state.error);
   const notice = useAuthStore((state) => state.notice);
   const clearMessages = useAuthStore((state) => state.clearMessages);
@@ -164,6 +165,15 @@ export function RegisterPage() {
             Log in
           </Link>
         </p>
+
+        <Button
+          type="button"
+          variant="ghost"
+          className="w-full text-xs text-muted-foreground hover:text-foreground"
+          onClick={() => continueAsGuest()}
+        >
+          Continue without an account →
+        </Button>
       </div>
     </AuthLayout>
   );

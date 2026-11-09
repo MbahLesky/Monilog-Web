@@ -5,65 +5,65 @@
 @tailwind utilities;
 
 :root {
-  --background: 214 50% 97%;
-  --foreground: 218 36% 15%;
+  --background: 210 40% 98%;
+  --foreground: 222 47% 11%;
   --card: 0 0% 100%;
-  --card-foreground: 218 36% 15%;
+  --card-foreground: 222 47% 11%;
   --popover: 0 0% 100%;
-  --popover-foreground: 218 36% 15%;
+  --popover-foreground: 222 47% 11%;
   --surface: 0 0% 100%;
-  --surface-elevated: 214 36% 99%;
-  --surface-tint: 213 43% 96%;
-  --primary: 218 68% 29%;
+  --surface-elevated: 210 40% 99%;
+  --surface-tint: 174 45% 94%;
+  --primary: 174 89% 32%;
   --primary-foreground: 0 0% 100%;
-  --secondary: 176 81% 30%;
-  --secondary-foreground: 0 0% 100%;
+  --secondary: 171 93% 43%;
+  --secondary-foreground: 222 84% 5%;
   --accent: 10 71% 59%;
   --accent-foreground: 0 0% 100%;
-  --muted: 214 34% 94%;
-  --muted-foreground: 217 18% 44%;
+  --muted: 210 32% 94%;
+  --muted-foreground: 215 18% 42%;
   --border: 214 26% 87%;
   --input: 214 35% 92%;
-  --ring: 218 68% 29%;
-  --success: 176 81% 30%;
+  --ring: 171 93% 43%;
+  --success: 174 89% 32%;
   --success-foreground: 0 0% 100%;
   --warning: 36 93% 53%;
   --warning-foreground: 23 77% 12%;
   --danger: 10 71% 59%;
   --danger-foreground: 0 0% 100%;
-  --radius-xl: 1.75rem;
-  --radius-lg: 1.25rem;
-  --radius-md: 1rem;
-  --radius-sm: 0.75rem;
+  --radius-xl: 1.25rem;
+  --radius-lg: 0.95rem;
+  --radius-md: 0.75rem;
+  --radius-sm: 0.5rem;
 }
 
 .dark {
-  --background: 214 59% 8%;
-  --foreground: 213 30% 96%;
-  --card: 217 50% 12%;
-  --card-foreground: 213 30% 96%;
-  --popover: 217 50% 12%;
-  --popover-foreground: 213 30% 96%;
-  --surface: 217 50% 12%;
-  --surface-elevated: 216 45% 15%;
-  --surface-tint: 217 44% 18%;
-  --primary: 218 63% 58%;
-  --primary-foreground: 214 59% 8%;
-  --secondary: 176 63% 42%;
-  --secondary-foreground: 214 59% 8%;
+  --background: 222 84% 5%;
+  --foreground: 210 40% 98%;
+  --card: 222 47% 11%;
+  --card-foreground: 210 40% 98%;
+  --popover: 222 47% 11%;
+  --popover-foreground: 210 40% 98%;
+  --surface: 222 47% 11%;
+  --surface-elevated: 217 33% 15%;
+  --surface-tint: 217 33% 17%;
+  --primary: 171 93% 43%;
+  --primary-foreground: 222 84% 5%;
+  --secondary: 177 89% 28%;
+  --secondary-foreground: 210 40% 98%;
   --accent: 10 80% 65%;
-  --accent-foreground: 214 59% 8%;
-  --muted: 217 32% 18%;
-  --muted-foreground: 214 18% 72%;
-  --border: 217 27% 24%;
-  --input: 217 26% 20%;
-  --ring: 218 63% 58%;
-  --success: 176 63% 42%;
-  --success-foreground: 214 59% 8%;
+  --accent-foreground: 222 84% 5%;
+  --muted: 217 33% 16%;
+  --muted-foreground: 215 20% 68%;
+  --border: 217 33% 18%;
+  --input: 217 33% 16%;
+  --ring: 171 93% 43%;
+  --success: 171 93% 43%;
+  --success-foreground: 222 84% 5%;
   --warning: 36 93% 53%;
-  --warning-foreground: 214 59% 8%;
+  --warning-foreground: 222 84% 5%;
   --danger: 10 80% 65%;
-  --danger-foreground: 214 59% 8%;
+  --danger-foreground: 222 84% 5%;
 }
 
 * {
@@ -72,6 +72,7 @@
 }
 
 html {
+  font-size: 13px;
   scroll-behavior: smooth;
 }
 
@@ -84,14 +85,16 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   background-image:
-    radial-gradient(circle at top, rgba(23, 59, 122, 0.12), transparent 32%),
-    linear-gradient(180deg, rgba(243, 246, 251, 0.92), rgba(243, 246, 251, 1));
+    radial-gradient(circle at top left, rgba(8, 210, 181, 0.1), transparent 30%),
+    radial-gradient(circle at bottom right, rgba(8, 134, 127, 0.12), transparent 28%),
+    linear-gradient(180deg, rgba(248, 250, 252, 0.96), rgba(248, 250, 252, 1));
 }
 
 .dark body {
   background-image:
-    radial-gradient(circle at top, rgba(15, 140, 131, 0.12), transparent 32%),
-    linear-gradient(180deg, rgba(8, 17, 31, 0.98), rgba(8, 17, 31, 1));
+    radial-gradient(circle at top left, rgba(8, 210, 181, 0.14), transparent 28%),
+    radial-gradient(circle at bottom right, rgba(8, 134, 127, 0.22), transparent 26%),
+    linear-gradient(180deg, #020617, #020617);
 }
 
 h1,
@@ -99,7 +102,7 @@ h2,
 h3,
 h4 {
   color: hsl(var(--foreground));
-  letter-spacing: -0.03em;
+  letter-spacing: -0.025em;
 }
 
 button:focus-visible,
@@ -114,7 +117,7 @@ textarea:focus-visible {
 
 .page-grid {
   display: grid;
-  gap: 1.5rem;
+  gap: 1.125rem;
 }
 
 .glass-surface {
@@ -126,11 +129,11 @@ textarea:focus-visible {
 
 .dark .glass-surface {
   border-color: rgba(255, 255, 255, 0.08);
-  background: rgba(16, 28, 47, 0.8);
+  background: rgba(15, 23, 42, 0.82);
 }
 
 @media (min-width: 1280px) {
   .page-grid {
-    gap: 1.75rem;
+    gap: 1.25rem;
   }
 }

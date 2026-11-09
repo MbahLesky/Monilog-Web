@@ -258,8 +258,13 @@ export const transfersRepository = {
     }
 
     const records = await transfersTable.toArray();
+    const unclaimed = records.filter((record) => !record.userId);
+    if (unclaimed.length === 0) {
+      return;
+    }
+
     await Promise.all(
-      records.map((record) =>
+      unclaimed.map((record) =>
         transfersTable.put({
           ...record,
           userId,
@@ -271,7 +276,7 @@ export const transfersRepository = {
     );
 
     await Promise.all(
-      records.map((record) => syncRepository.enqueue("transfers", record.id, "update"))
+      unclaimed.map((record) => syncRepository.enqueue("transfers", record.id, "update"))
     );
   }
 };

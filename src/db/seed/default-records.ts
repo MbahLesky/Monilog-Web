@@ -24,7 +24,7 @@ export function createDefaultSettings(): AppSettings {
     id: SETTINGS_ROW_ID,
     currencyCode: DEFAULT_CURRENCY,
     language: DEFAULT_LANGUAGE,
-    themeMode: "system",
+    themeMode: "dark",
     onboardingComplete: false,
     tutorialCompletedIds: [],
     userId: null,
@@ -71,7 +71,7 @@ export function createDefaultAccounts(): Account[] {
     syncError: null,
     lastSyncedAt: null,
     createdAt: timestamp,
-    updatedAt: timestamp,
+    updatedAt: NEVER_SYNCED,
     deletedAt: null
   }));
 }
@@ -92,7 +92,7 @@ export function createDefaultCategories(): Category[] {
     syncError: null,
     lastSyncedAt: null,
     createdAt: timestamp,
-    updatedAt: timestamp,
+    updatedAt: NEVER_SYNCED,
     deletedAt: null
   }));
 }

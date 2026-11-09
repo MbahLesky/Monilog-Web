@@ -267,7 +267,7 @@ async function pullTable(entityName: SyncEntityName, userId: string) {
         lastSyncedAt: nowIso()
       };
       const local = (await table.get(remoteRecord.id)) as Account | undefined;
-      if (!local || remoteRecord.updatedAt >= local.updatedAt) {
+      if (!local || !local.userId || remoteRecord.updatedAt > local.updatedAt) {
         await table.put(remoteRecord as never);
       }
       latestUpdatedAt = row.updated_at;
@@ -296,7 +296,7 @@ async function pullTable(entityName: SyncEntityName, userId: string) {
         lastSyncedAt: nowIso()
       };
       const local = (await table.get(remoteRecord.id)) as Category | undefined;
-      if (!local || remoteRecord.updatedAt >= local.updatedAt) {
+      if (!local || !local.userId || remoteRecord.updatedAt > local.updatedAt) {
         await table.put(remoteRecord as never);
       }
       latestUpdatedAt = row.updated_at;
@@ -326,7 +326,7 @@ async function pullTable(entityName: SyncEntityName, userId: string) {
         lastSyncedAt: nowIso()
       };
       const local = (await table.get(remoteRecord.id)) as TransactionRecord | undefined;
-      if (!local || remoteRecord.updatedAt >= local.updatedAt) {
+      if (!local || !local.userId || remoteRecord.updatedAt > local.updatedAt) {
         await table.put(remoteRecord as never);
       }
       latestUpdatedAt = row.updated_at;
@@ -357,7 +357,7 @@ async function pullTable(entityName: SyncEntityName, userId: string) {
         lastSyncedAt: nowIso()
       };
       const local = (await table.get(remoteRecord.id)) as TransferRecord | undefined;
-      if (!local || remoteRecord.updatedAt >= local.updatedAt) {
+      if (!local || !local.userId || remoteRecord.updatedAt > local.updatedAt) {
         await table.put(remoteRecord as never);
       }
       latestUpdatedAt = row.updated_at;
@@ -382,7 +382,7 @@ async function pullTable(entityName: SyncEntityName, userId: string) {
         lastSyncedAt: nowIso()
       };
       const local = (await table.get(remoteRecord.id)) as Budget | undefined;
-      if (!local || remoteRecord.updatedAt >= local.updatedAt) {
+      if (!local || !local.userId || remoteRecord.updatedAt > local.updatedAt) {
         await table.put(remoteRecord as never);
       }
       latestUpdatedAt = row.updated_at;
@@ -412,7 +412,7 @@ async function pullTable(entityName: SyncEntityName, userId: string) {
         lastSyncedAt: nowIso()
       };
       const local = (await table.get(remoteRecord.id)) as RecurringTransaction | undefined;
-      if (!local || remoteRecord.updatedAt >= local.updatedAt) {
+      if (!local || !local.userId || remoteRecord.updatedAt > local.updatedAt) {
         await table.put(remoteRecord as never);
       }
       latestUpdatedAt = row.updated_at;
@@ -421,7 +421,7 @@ async function pullTable(entityName: SyncEntityName, userId: string) {
     const { data: profile } = await client.from("profiles").select("*").eq("id", userId).maybeSingle();
     if (profile) {
       const local = (await table.get("app-settings")) as AppSettings | undefined;
-      if (!local || profile.updated_at >= local.updatedAt) {
+      if (!local || !local.userId || profile.updated_at > local.updatedAt) {
         const parsedTutorials =
           typeof profile.tutorial_completed_ids === "string"
             ? profile.tutorial_completed_ids
@@ -437,11 +437,11 @@ async function pullTable(entityName: SyncEntityName, userId: string) {
           remoteId: userId,
           currencyCode: profile.preferred_currency || local?.currencyCode || "XAF",
           language: (profile.preferred_language as "en" | "fr") || local?.language || "en",
-          themeMode: (profile.theme_mode as "light" | "dark" | "system") || local?.themeMode || "system",
-          onboardingComplete: Boolean(profile.onboarding_completed || local?.onboardingComplete),
+          themeMode: (profile.theme_mode as "light" | "dark" | "system") || local?.themeMode || "dark",
+          onboardingComplete: true,
           tutorialCompletedIds: parsedTutorials,
           createdAt: local?.createdAt || profile.created_at || nowIso(),
-          updatedAt: profile.updated_at,
+          updatedAt: profile.updated_at || nowIso(),
           syncStatus: "synced",
           syncError: null,
           lastSyncedAt: nowIso()
@@ -456,91 +456,98 @@ async function pullTable(entityName: SyncEntityName, userId: string) {
   }
 }
 
+let isSyncRunning = false;
+
 export const syncEngine = {
   async run(userId: string) {
     if (!navigator.onLine || !supabase) {
       return syncRepository.summarize();
     }
 
-    const pendingOperations = await syncRepository.listPending();
-
-    for (const operation of pendingOperations) {
-      try {
-        await pushOperation(operation, userId);
-      } catch {
-        // Individual failure logged; proceed with other queue items
-      }
+    if (isSyncRunning) {
+      return syncRepository.summarize();
     }
 
-    await Promise.all([
-      pullTable("accounts", userId),
-      pullTable("categories", userId),
-      pullTable("transactions", userId),
-      pullTable("transfers", userId),
-      pullTable("budgets", userId),
-      pullTable("recurringTransactions", userId),
-      pullTable("settings", userId)
-    ]);
+    isSyncRunning = true;
+    try {
+      await Promise.all([
+        pullTable("settings", userId),
+        pullTable("accounts", userId),
+        pullTable("categories", userId),
+        pullTable("transactions", userId),
+        pullTable("transfers", userId),
+        pullTable("budgets", userId),
+        pullTable("recurringTransactions", userId)
+      ]);
 
-    return syncRepository.summarize();
+      const pendingOperations = await syncRepository.listPending();
+
+      for (const operation of pendingOperations) {
+        try {
+          await pushOperation(operation, userId);
+        } catch {
+          // Individual failure logged; proceed with other queue items
+        }
+      }
+
+      syncRepository.recordSyncSuccess();
+      return syncRepository.summarize();
+    } finally {
+      isSyncRunning = false;
+    }
   },
 
   subscribeRealtime(userId: string, onUpdate?: () => void) {
     if (!supabase) return () => {};
+
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    const schedulePull = (tableName: SyncEntityName) => {
+      if (isSyncRunning) return;
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(async () => {
+        if (isSyncRunning) return;
+        await pullTable(tableName, userId);
+        syncRepository.recordSyncSuccess();
+        onUpdate?.();
+      }, 1200);
+    };
 
     const channel = supabase
       .channel(`realtime-ledger-${userId}`)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "transactions", filter: `user_id=eq.${userId}` },
-        async () => {
-          await pullTable("transactions", userId);
-          onUpdate?.();
-        }
+        () => schedulePull("transactions")
       )
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "accounts", filter: `user_id=eq.${userId}` },
-        async () => {
-          await pullTable("accounts", userId);
-          onUpdate?.();
-        }
+        () => schedulePull("accounts")
       )
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "categories", filter: `user_id=eq.${userId}` },
-        async () => {
-          await pullTable("categories", userId);
-          onUpdate?.();
-        }
+        () => schedulePull("categories")
       )
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "transfers", filter: `user_id=eq.${userId}` },
-        async () => {
-          await pullTable("transfers", userId);
-          onUpdate?.();
-        }
+        () => schedulePull("transfers")
       )
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "budgets", filter: `user_id=eq.${userId}` },
-        async () => {
-          await pullTable("budgets", userId);
-          onUpdate?.();
-        }
+        () => schedulePull("budgets")
       )
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "recurring_transactions", filter: `user_id=eq.${userId}` },
-        async () => {
-          await pullTable("recurringTransactions", userId);
-          onUpdate?.();
-        }
+        () => schedulePull("recurringTransactions")
       )
       .subscribe();
 
     return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
       supabase?.removeChannel(channel);
     };
   }

@@ -11,11 +11,11 @@ interface PageShellProps {
 
 export function PageShell({ title, description, action, children, className }: PageShellProps) {
   return (
-    <div className={cn("page-grid", className)}>
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div className="space-y-2">
-          <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">{title}</h1>
-          {description ? <p className="max-w-3xl text-sm text-muted-foreground">{description}</p> : null}
+    <div className={cn("page-grid min-w-0", className)}>
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div className="space-y-1">
+          <h1 className="text-xl font-bold tracking-tight sm:text-2xl">{title}</h1>
+          {description ? <p className="max-w-2xl text-xs sm:text-sm text-muted-foreground">{description}</p> : null}
         </div>
         {action}
       </div>

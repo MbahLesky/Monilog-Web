@@ -19,6 +19,7 @@ export function LoginPage() {
   const authAvailable = useAuthStore((state) => state.authAvailable);
   const signIn = useAuthStore((state) => state.signIn);
   const signInWithGoogle = useAuthStore((state) => state.signInWithGoogle);
+  const continueAsGuest = useAuthStore((state) => state.continueAsGuest);
   const resetPassword = useAuthStore((state) => state.resetPassword);
   const error = useAuthStore((state) => state.error);
   const notice = useAuthStore((state) => state.notice);
@@ -169,6 +170,15 @@ export function LoginPage() {
             </form>
           </TabsContent>
         </Tabs>
+
+        <Button
+          type="button"
+          variant="ghost"
+          className="w-full text-xs text-muted-foreground hover:text-foreground"
+          onClick={() => continueAsGuest()}
+        >
+          Continue without an account →
+        </Button>
       </div>
     </AuthLayout>
   );

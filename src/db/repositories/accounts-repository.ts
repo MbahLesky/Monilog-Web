@@ -158,8 +158,12 @@ export const accountsRepository = {
 
   async stampOwnership(userId: string) {
     const records = await appDb.accounts.toArray();
+    const unclaimed = records.filter((record) => !record.userId);
+    if (unclaimed.length === 0) {
+      return;
+    }
     await Promise.all(
-      records.map((record) =>
+      unclaimed.map((record) =>
         this.updateAccount(record.id, {
           userId
         })

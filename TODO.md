@@ -21,6 +21,9 @@
 - ~~[x] **WEB-016:** Redesign Settings Page into 10 Clickable Tabs (`Profile`, `Currency`, `Accounts`, `Notifications`, `Security`, `Theme Preference`, `Categories`, `Import/Export`, `Backup/Restore`, `Tutorials`) + Version/Build Display~~
 - ~~[x] **WEB-017:** Enhance Analytics Page with Date Presets, Custom Date Range, Account/Type Filters, and 4 Interactive Views (`Overview & Trends`, `Categories`, `Accounts & Top Transactions`, `Budgets`)~~
 - ~~[x] **WEB-018:** Bump Web App Version to `1.3.0` (Build 6)~~
+- ~~[x] **WEB-019:** Unify Theme & Color Palette (`#08D2B5` Mint Teal, `#08867F` Deep Teal, `#020617` / `#0F172A` Dark Slate) with Landing Page (`v1.3.1` Build 7)~~
+- ~~[x] **WEB-020:** Scale UI Down to Sleek ~80% Sizing (`13px` root, compact AppShell, PageShell, Cards, Buttons, Inputs) & Eliminate Settings Menu Item Overflow~~
+- ~~[x] **WEB-021:** Fix Glitching "Last sync update" Timestamp, Skip Onboarding for Existing Signed-In Accounts, & Add "Continue without an account" Option~~
 
 ---
 

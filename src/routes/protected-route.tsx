@@ -6,13 +6,14 @@ import { SessionRestorePage } from "@/pages/session-restore-page";
 
 export function ProtectedRoute() {
   const status = useAuthStore((state) => state.status);
+  const isGuest = useAuthStore((state) => state.isGuest);
   const { loading, complete } = useOnboardingStatus();
 
   if (status === "checking" || loading) {
     return <SessionRestorePage />;
   }
 
-  if (status !== "signed_in") {
+  if (status !== "signed_in" && !isGuest) {
     return <Navigate to={ROUTES.login} replace />;
   }
 

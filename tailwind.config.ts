@@ -77,13 +77,13 @@ const config: Config = {
         sans: ["Poppins", "ui-sans-serif", "system-ui", "sans-serif"]
       },
       boxShadow: {
-        card: "0 12px 32px -18px rgba(23, 59, 122, 0.24)",
-        soft: "0 8px 24px -20px rgba(8, 17, 31, 0.3)"
+        card: "0 10px 28px -18px rgba(8, 210, 181, 0.22)",
+        soft: "0 8px 20px -18px rgba(2, 6, 23, 0.35)"
       },
       backgroundImage: {
         "brand-gradient": "linear-gradient(135deg, hsl(var(--primary)), hsl(var(--secondary)))",
         "soft-grid":
-          "radial-gradient(circle at top, rgba(23,59,122,0.08), transparent 35%), linear-gradient(transparent 31px, rgba(15,140,131,0.04) 32px), linear-gradient(90deg, transparent 31px, rgba(15,140,131,0.04) 32px)"
+          "radial-gradient(circle at top left, rgba(8,210,181,0.12), transparent 32%), radial-gradient(circle at bottom right, rgba(8,134,127,0.18), transparent 28%), linear-gradient(transparent 31px, rgba(8,210,181,0.03) 32px), linear-gradient(90deg, transparent 31px, rgba(8,210,181,0.03) 32px)"
       },
       keyframes: {
         "fade-up": {

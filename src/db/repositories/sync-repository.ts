@@ -3,7 +3,25 @@ import type { SyncEntityName, SyncOperationRecord, SyncOperationType, SyncSummar
 import { createId } from "@/utils/id";
 import { nowIso } from "@/utils/date-utils";
 
+const LAST_SYNCED_STORAGE_KEY = "moniilog-last-synced-at";
+
 export const syncRepository = {
+  recordSyncSuccess(timestamp = nowIso()) {
+    try {
+      window.localStorage.setItem(LAST_SYNCED_STORAGE_KEY, timestamp);
+    } catch {
+      // Ignore storage errors in restricted environments
+    }
+  },
+
+  getLastSyncedAt(): string | null {
+    try {
+      return window.localStorage.getItem(LAST_SYNCED_STORAGE_KEY);
+    } catch {
+      return null;
+    }
+  },
+
   async enqueue(
     entityName: SyncEntityName,
     entityId: string,
@@ -83,17 +101,20 @@ export const syncRepository = {
       appDb.syncOperations.where("status").equals("failed").count()
     ]);
 
-    const latestCompleted = await appDb.syncOperations.orderBy("updatedAt").last();
-
     return {
       pending,
       failed,
       processing: false,
-      lastSyncedAt: latestCompleted?.updatedAt ?? null
+      lastSyncedAt: this.getLastSyncedAt()
     };
   },
 
   async clearAll() {
+    try {
+      window.localStorage.removeItem(LAST_SYNCED_STORAGE_KEY);
+    } catch {
+      // Ignore storage errors
+    }
     await appDb.syncOperations.clear();
   }
 };
