@@ -26,6 +26,13 @@ function assertSupabase() {
 export const supabaseAuthService = {
   async getCurrentUser(): Promise<User | null> {
     if (!supabase) return null;
+    const { data: sessionData } = await supabase.auth.getSession();
+    if (sessionData.session?.user) {
+      return sessionData.session.user;
+    }
+    if (!navigator.onLine) {
+      return null;
+    }
     const { data } = await supabase.auth.getUser();
     return data.user ?? null;
   },

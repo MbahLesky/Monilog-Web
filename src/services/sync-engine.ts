@@ -35,16 +35,16 @@ function assertSupabase() {
   return supabase;
 }
 
-function getCheckpointKey(entityName: SyncEntityName) {
-  return `${CHECKPOINT_PREFIX}:${entityName}`;
+function getCheckpointKey(entityName: SyncEntityName, userId: string) {
+  return `${CHECKPOINT_PREFIX}:${userId}:${entityName}`;
 }
 
-function getCheckpoint(entityName: SyncEntityName) {
-  return window.localStorage.getItem(getCheckpointKey(entityName));
+function getCheckpoint(entityName: SyncEntityName, userId: string) {
+  return window.localStorage.getItem(getCheckpointKey(entityName, userId));
 }
 
-function setCheckpoint(entityName: SyncEntityName, value: string) {
-  window.localStorage.setItem(getCheckpointKey(entityName), value);
+function setCheckpoint(entityName: SyncEntityName, userId: string, value: string) {
+  window.localStorage.setItem(getCheckpointKey(entityName, userId), value);
 }
 
 function getSyncTable(entityName: SyncEntityName) {
@@ -203,13 +203,16 @@ async function pushOperation(operation: SyncOperationRecord, userId: string) {
       if (error) throw error;
     } else if (operation.entityName === "settings") {
       const s = record as AppSettings;
+      const tutorialIdsStr = Array.isArray(s.tutorialCompletedIds)
+        ? s.tutorialCompletedIds.join(",")
+        : String(s.tutorialCompletedIds || "");
       const { error } = await client.from("profiles").upsert({
         id: userId,
         preferred_currency: s.currencyCode || "XAF",
         preferred_language: s.language || "en",
         theme_mode: s.themeMode || "system",
         onboarding_completed: s.onboardingComplete ?? false,
-        tutorial_completed_ids: s.tutorialCompletedIds || "",
+        tutorial_completed_ids: tutorialIdsStr,
         updated_at: s.updatedAt
       });
       if (error) throw error;
@@ -227,8 +230,9 @@ async function pushOperation(operation: SyncOperationRecord, userId: string) {
 
 async function pullTable(entityName: SyncEntityName, userId: string) {
   const client = assertSupabase();
-  const checkpoint = getCheckpoint(entityName);
   const table = getSyncTable(entityName);
+  const localCount = await (table as { count: () => Promise<number> }).count();
+  const checkpoint = localCount > 2 ? getCheckpoint(entityName, userId) : null;
 
   let latestUpdatedAt: string | null = null;
 
@@ -238,6 +242,12 @@ async function pullTable(entityName: SyncEntityName, userId: string) {
     const { data } = await q;
 
     for (const row of data ?? []) {
+      if (row.is_default && row.id !== "default-cash" && row.id !== "default-bank") {
+        const existingDefault = await table.get("default-cash");
+        if (existingDefault && String(row.name).toLowerCase() === "cash") {
+          continue;
+        }
+      }
       const remoteRecord: Account = {
         id: row.id,
         userId: row.user_id,
@@ -412,14 +422,25 @@ async function pullTable(entityName: SyncEntityName, userId: string) {
     if (profile) {
       const local = (await table.get("app-settings")) as AppSettings | undefined;
       if (!local || profile.updated_at >= local.updatedAt) {
+        const parsedTutorials =
+          typeof profile.tutorial_completed_ids === "string"
+            ? profile.tutorial_completed_ids
+                .split(",")
+                .map((s: string) => s.trim())
+                .filter(Boolean)
+            : Array.isArray(profile.tutorial_completed_ids)
+              ? profile.tutorial_completed_ids
+              : local?.tutorialCompletedIds ?? [];
         await table.put({
           id: "app-settings",
           userId,
-          currencyCode: profile.preferred_currency || "XAF",
-          language: profile.preferred_language || "en",
-          themeMode: profile.theme_mode || "system",
-          onboardingCompleted: profile.onboarding_completed,
-          tutorialCompletedIds: profile.tutorial_completed_ids,
+          remoteId: userId,
+          currencyCode: profile.preferred_currency || local?.currencyCode || "XAF",
+          language: (profile.preferred_language as "en" | "fr") || local?.language || "en",
+          themeMode: (profile.theme_mode as "light" | "dark" | "system") || local?.themeMode || "system",
+          onboardingComplete: Boolean(profile.onboarding_completed || local?.onboardingComplete),
+          tutorialCompletedIds: parsedTutorials,
+          createdAt: local?.createdAt || profile.created_at || nowIso(),
           updatedAt: profile.updated_at,
           syncStatus: "synced",
           syncError: null,
@@ -431,7 +452,7 @@ async function pullTable(entityName: SyncEntityName, userId: string) {
   }
 
   if (latestUpdatedAt) {
-    setCheckpoint(entityName, latestUpdatedAt);
+    setCheckpoint(entityName, userId, latestUpdatedAt);
   }
 }
 

@@ -14,7 +14,7 @@ export interface ImportRecord {
 
 export interface ExportRecord {
   id: string;
-  format: "csv";
+  format: "csv" | "pdf";
   recordCount: number;
   filtersApplied: string;
   fileName: string;

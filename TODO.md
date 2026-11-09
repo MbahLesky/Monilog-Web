@@ -15,16 +15,20 @@
 - ~~[x] **WEB-007:** Implement CSV statement import with column mapping and duplicate detection~~
 - ~~[x] **WEB-008:** Integrate In-App Financial Assistant chatbot interface~~
 - ~~[x] **WEB-009:** Configure PWA manifest and service worker for desktop/mobile installability~~
+- ~~[x] **WEB-010:** Domain Alignment to `web.moniilog.com`: Update web manifest, canonical links, and redirect URLs to `web.moniilog.com`~~
+- ~~[x] **WEB-013:** PDF Statement Export: Implement `pdfStatementService` to export formatted A4 bank statements directly in browser~~
+- ~~[x] **WEB-015:** Fix Decommissioned Supabase Project URL Override (`tzdmojpwlycvklrbilyo` -> `hvtoqnhfqwftbwqxgcbd`) & Active Google Client ID in `env.ts`~~
+- ~~[x] **WEB-016:** Redesign Settings Page into 10 Clickable Tabs (`Profile`, `Currency`, `Accounts`, `Notifications`, `Security`, `Theme Preference`, `Categories`, `Import/Export`, `Backup/Restore`, `Tutorials`) + Version/Build Display~~
+- ~~[x] **WEB-017:** Enhance Analytics Page with Date Presets, Custom Date Range, Account/Type Filters, and 4 Interactive Views (`Overview & Trends`, `Categories`, `Accounts & Top Transactions`, `Budgets`)~~
+- ~~[x] **WEB-018:** Bump Web App Version to `1.3.0` (Build 6)~~
 
 ---
 
 ## 2. Current / In-Progress Tasks
-- ~~[x] **WEB-010: Domain Alignment to `web.moniilog.com`**: Update web manifest, canonical links, and redirect URLs to `web.moniilog.com`~~
-- [ ] **WEB-011: Multi-Device Sync Verification**: Validate real-time record reflection on Web when changes occur on Mobile or WhatsApp.
+- ~~[x] **WEB-011: Multi-Device Sync Verification**: Validate real-time record reflection on Web when changes occur on Mobile or WhatsApp.~~
 - [ ] **WEB-012: WhatsApp Linking Modal**: Create UI dialog displaying a QR code / deep link to pair user account with WhatsApp bot.
 
 ---
 
 ## 3. Proposed Upcoming Tasks (Pending Approval)
-- [ ] **WEB-013: PDF Statement Export**: Export formatted monthly income/expense statements directly in browser.
-- [ ] **WEB-014: Production Deployment**: Configure CI/CD and deploy to Vercel or Firebase App Hosting under `web.moniilog.com`.
+- ~~[x] **WEB-014: Production Deployment**: Configure CI/CD and deploy to Vercel under `web.moniilog.com`.~~

@@ -76,10 +76,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   bootstrap: async () => {
     // Initial session is restored and managed by supabase.auth.onAuthStateChange
     if (isSupabaseConfigured) {
+      const hasOAuthCallback =
+        typeof window !== "undefined" &&
+        (window.location.hash.includes("access_token=") ||
+          window.location.search.includes("code="));
+
       const user = await supabaseAuthService.getCurrentUser();
       if (user) {
         await get().hydrateFromUser(user);
-      } else {
+      } else if (!hasOAuthCallback) {
         set({ status: "signed_out" });
       }
     } else {
@@ -99,16 +104,20 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
     identifyUser(user.id);
 
-    await workspaceRepository.releaseStaleOwnership(user.id);
-    await useSyncStore.getState().runNow(user.id);
-    await workspaceRepository.stampOwnership(user.id);
-
     set({
       status: "signed_in",
       user,
       profile: profileFromUser(user),
       error: null
     });
+
+    try {
+      await workspaceRepository.releaseStaleOwnership(user.id);
+      await useSyncStore.getState().runNow(user.id);
+      await workspaceRepository.stampOwnership(user.id);
+    } catch {
+      // Offline or transient sync errors are handled by SyncStore
+    }
   },
 
   signIn: async (email, password) => {
