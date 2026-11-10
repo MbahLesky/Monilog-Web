@@ -39,6 +39,7 @@ import { categoriesRepository } from "@/db/repositories/categories-repository";
 import { settingsRepository } from "@/db/repositories/settings-repository";
 import { workspaceRepository } from "@/db/repositories/workspace-repository";
 import { jsonBackupService } from "@/services/json-backup-service";
+import { syncEngine } from "@/services/sync-engine";
 import { SUPPORTED_CURRENCIES } from "@/lib/constants";
 import { supabase } from "@/lib/supabase-client";
 import { ROUTES } from "@/routes/route-constants";
@@ -58,8 +59,8 @@ export type SettingsTabId =
   | "backup_restore"
   | "tutorials";
 
-const APP_VERSION = "1.3.2";
-const APP_BUILD = "8";
+const APP_VERSION = "1.3.3";
+const APP_BUILD = "9";
 
 export function SettingsPage() {
   const navigate = useNavigate();
@@ -142,6 +143,10 @@ export function SettingsPage() {
       }))
     );
 
+    if (userId) {
+      void syncEngine.run(userId);
+    }
+
     toast.success("Opening balances saved.");
   }
 
@@ -211,7 +216,9 @@ export function SettingsPage() {
   }
 
   async function handleSignOut() {
-    await signOut();
+    try {
+      await signOut();
+    } catch (_) {}
     navigate(ROUTES.login);
   }
 

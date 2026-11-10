@@ -4,6 +4,7 @@ import type { Account, AccountBalanceSnapshot, AccountType, TransactionRecord, T
 import { nowIso } from "@/utils/date-utils";
 import { createId } from "@/utils/id";
 import { syncRepository } from "@/db/repositories/sync-repository";
+import { syncEngine } from "@/services/sync-engine";
 
 async function ensureDefaultAccounts() {
   const count = await appDb.accounts.count();
@@ -130,11 +131,13 @@ export const accountsRepository = {
 
   async saveOpeningBalances(rows: Array<{ id: string; balance: number }>) {
     await Promise.all(
-      rows.map((row) =>
-        this.updateAccount(row.id, {
+      rows.map(async (row) => {
+        const next = await this.updateAccount(row.id, {
           openingBalance: row.balance
-        })
-      )
+        });
+        await syncEngine.pushEntityImmediate("accounts", next.id, "update");
+        return next;
+      })
     );
   },
 

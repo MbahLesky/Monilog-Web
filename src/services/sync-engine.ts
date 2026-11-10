@@ -345,7 +345,10 @@ async function pullTable(entityName: SyncEntityName, userId: string) {
       .select("*")
       .eq("user_id", userId)
       .order("transaction_date", { ascending: false });
-    if (error) return;
+    if (error) {
+      console.error("[SyncEngine] Failed to pull transactions:", error);
+      return;
+    }
 
     const remoteIds = new Set<string>();
     for (const row of data ?? []) {
@@ -502,7 +505,10 @@ async function pullTable(entityName: SyncEntityName, userId: string) {
     const { data: profile } = await client.from("profiles").select("*").eq("id", userId).maybeSingle();
     if (profile && !pendingIds.has("app-settings")) {
       const local = (await table.get("app-settings")) as AppSettings | undefined;
-      const parsedTutorials =
+      const localTourDone =
+        typeof localStorage !== "undefined" &&
+        localStorage.getItem("moniilog_tour_completed") === "true";
+      const remoteTutorials =
         typeof profile.tutorial_completed_ids === "string"
           ? profile.tutorial_completed_ids
               .split(",")
@@ -510,7 +516,15 @@ async function pullTable(entityName: SyncEntityName, userId: string) {
               .filter(Boolean)
           : Array.isArray(profile.tutorial_completed_ids)
             ? profile.tutorial_completed_ids
-            : local?.tutorialCompletedIds ?? [];
+            : [];
+      const localTutorials = local?.tutorialCompletedIds ?? [];
+      const mergedTutorials = Array.from(
+        new Set([
+          ...localTutorials,
+          ...remoteTutorials,
+          ...(localTourDone ? ["app-tour"] : [])
+        ])
+      );
       await table.put({
         id: "app-settings",
         userId,
@@ -519,7 +533,7 @@ async function pullTable(entityName: SyncEntityName, userId: string) {
         language: (profile.preferred_language as "en" | "fr") || local?.language || "en",
         themeMode: (profile.theme_mode as "light" | "dark" | "system") || local?.themeMode || "dark",
         onboardingComplete: true,
-        tutorialCompletedIds: parsedTutorials,
+        tutorialCompletedIds: mergedTutorials,
         createdAt: local?.createdAt || profile.created_at || nowIso(),
         updatedAt: profile.updated_at || nowIso(),
         syncStatus: "synced",
@@ -575,10 +589,13 @@ export const syncEngine = {
         }
       }
 
+      // Pull foundational data (settings, accounts, categories) first so
+      // transaction foreign keys and names resolve reliably without dangling relations.
+      await pullTable("settings", userId);
+      await pullTable("accounts", userId);
+      await pullTable("categories", userId);
+
       await Promise.all([
-        pullTable("settings", userId),
-        pullTable("accounts", userId),
-        pullTable("categories", userId),
         pullTable("transactions", userId),
         pullTable("transfers", userId),
         pullTable("budgets", userId),

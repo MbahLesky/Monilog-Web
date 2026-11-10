@@ -4,6 +4,7 @@ import { SETTINGS_ROW_ID } from "@/lib/constants";
 import type { AppLanguage, AppSettings, NotificationPreference, ThemeMode } from "@/types";
 import { nowIso } from "@/utils/date-utils";
 import { syncRepository } from "@/db/repositories/sync-repository";
+import { supabase } from "@/lib/supabase-client";
 
 export const settingsRepository = {
   async ensureSeedData() {
@@ -83,17 +84,41 @@ export const settingsRepository = {
   },
 
   async markTutorialComplete(tutorialId: string) {
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem("moniilog_tour_completed", "true");
+    }
     const current = await this.getSettings();
     if (current.tutorialCompletedIds.includes(tutorialId)) {
       return current;
     }
 
-    return this.updateSettings({
+    const next = await this.updateSettings({
       tutorialCompletedIds: [...current.tutorialCompletedIds, tutorialId]
     });
+
+    if (supabase) {
+      try {
+        const { data } = await supabase.auth.getSession();
+        const userId = data.session?.user?.id;
+        if (userId) {
+          await supabase
+            .from("profiles")
+            .update({
+              tutorial_completed_ids: next.tutorialCompletedIds.join(","),
+              updated_at: next.updatedAt
+            })
+            .eq("id", userId);
+        }
+      } catch (_) {}
+    }
+
+    return next;
   },
 
   async resetTutorials() {
+    if (typeof localStorage !== "undefined") {
+      localStorage.removeItem("moniilog_tour_completed");
+    }
     return this.updateSettings({ tutorialCompletedIds: [] });
   },
 

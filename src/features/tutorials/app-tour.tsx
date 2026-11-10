@@ -50,7 +50,11 @@ export function AppTour() {
 
   // Auto-start once for a user who has never completed the tour.
   useEffect(() => {
-    if (settings && !settings.tutorialCompletedIds.includes(TOUR_ID)) {
+    const isCompleted =
+      localStorage.getItem("moniilog_tour_completed") === "true" ||
+      Boolean(settings?.tutorialCompletedIds?.includes(TOUR_ID));
+
+    if (settings && !isCompleted) {
       setRun(true);
     }
   }, [settings]);
@@ -66,6 +70,7 @@ export function AppTour() {
     const finished: string[] = [STATUS.FINISHED, STATUS.SKIPPED];
     if (finished.includes(data.status)) {
       setRun(false);
+      localStorage.setItem("moniilog_tour_completed", "true");
       void settingsRepository.markTutorialComplete(TOUR_ID);
     }
   }

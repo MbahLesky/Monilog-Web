@@ -3,6 +3,7 @@ import { appDb, getOptionalTable } from "@/db/dexie";
 import { accountsRepository } from "@/db/repositories/accounts-repository";
 import { settingsRepository } from "@/db/repositories/settings-repository";
 import { syncRepository } from "@/db/repositories/sync-repository";
+import { syncEngine } from "@/services/sync-engine";
 import type { TransferFilters, TransferListItem, TransferRecord } from "@/types";
 import { getRangeBounds, nowIso } from "@/utils/date-utils";
 import { createId } from "@/utils/id";
@@ -192,6 +193,7 @@ export const transfersRepository = {
 
     await transfersTable.add(transfer);
     await syncRepository.enqueue("transfers", transfer.id, "create", JSON.stringify(transfer));
+    await syncEngine.pushEntityImmediate("transfers", transfer.id, "create");
     return transfer;
   },
 
@@ -225,6 +227,7 @@ export const transfersRepository = {
 
     await transfersTable.put(next);
     await syncRepository.enqueue("transfers", next.id, "update", JSON.stringify(next));
+    await syncEngine.pushEntityImmediate("transfers", next.id, "update");
     return next;
   },
 
@@ -249,6 +252,7 @@ export const transfersRepository = {
 
     await transfersTable.put(next);
     await syncRepository.enqueue("transfers", next.id, "delete", JSON.stringify(next));
+    await syncEngine.pushEntityImmediate("transfers", next.id, "delete");
   },
 
   async stampOwnership(userId: string) {

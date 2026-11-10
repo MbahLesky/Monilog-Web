@@ -5,6 +5,7 @@ import type { TransactionFilters, TransactionListItem, TransactionRecord } from 
 import { getRangeBounds, nowIso } from "@/utils/date-utils";
 import { createId } from "@/utils/id";
 import { syncRepository } from "@/db/repositories/sync-repository";
+import { syncEngine } from "@/services/sync-engine";
 
 function matchesDateRange(transactionDate: string, filters: TransactionFilters) {
   if (filters.range === "all") {
@@ -53,9 +54,11 @@ export const transactionsRepository = {
 
         return {
           ...transaction,
-          accountName: account?.name ?? "Unknown account",
+          accountName:
+            account?.name ??
+            (transaction.accountId?.toLowerCase().includes("bank") ? "Bank" : "Cash"),
           accountCurrencyCode: settings.currencyCode,
-          categoryName: category?.name ?? "Uncategorized",
+          categoryName: category?.name ?? "General",
           categoryColorKey: category?.colorKey ?? null,
           categoryIconKey: category?.iconKey ?? null
         };
@@ -118,6 +121,7 @@ export const transactionsRepository = {
 
     await appDb.transactions.add(transaction);
     await syncRepository.enqueue("transactions", transaction.id, "create", JSON.stringify(transaction));
+    await syncEngine.pushEntityImmediate("transactions", transaction.id, "create");
     return transaction;
   },
 
@@ -145,6 +149,7 @@ export const transactionsRepository = {
 
     await appDb.transactions.put(next);
     await syncRepository.enqueue("transactions", next.id, "update", JSON.stringify(next));
+    await syncEngine.pushEntityImmediate("transactions", next.id, "update");
     return next;
   },
 
@@ -164,6 +169,7 @@ export const transactionsRepository = {
 
     await appDb.transactions.put(next);
     await syncRepository.enqueue("transactions", next.id, "delete", JSON.stringify(next));
+    await syncEngine.pushEntityImmediate("transactions", next.id, "delete");
   },
 
   async findLikelyDuplicate(input: {
