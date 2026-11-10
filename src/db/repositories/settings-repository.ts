@@ -1,10 +1,9 @@
 import { appDb } from "@/db/dexie";
 import { createDefaultNotificationPreferences, createDefaultSettings } from "@/db/seed/default-records";
 import { SETTINGS_ROW_ID } from "@/lib/constants";
+import { supabase } from "@/lib/supabase-client";
 import type { AppLanguage, AppSettings, NotificationPreference, ThemeMode } from "@/types";
 import { nowIso } from "@/utils/date-utils";
-import { syncRepository } from "@/db/repositories/sync-repository";
-import { supabase } from "@/lib/supabase-client";
 
 export const settingsRepository = {
   async ensureSeedData() {
@@ -29,13 +28,6 @@ export const settingsRepository = {
     return settings ?? createDefaultSettings();
   },
 
-  // Local storage is a single, unpartitioned store shared by whichever account
-  // last signed in on this browser. When it currently belongs to someone else,
-  // its fields must not be carried forward onto a new owner — that would leak
-  // the previous account's onboarding/preference state, and a fresh `updatedAt`
-  // stamp would block the new owner's real synced state from ever being pulled
-  // down. Resetting to a never-synced default clears the slate before that pull
-  // runs.
   async resetSettingsOwnership() {
     await appDb.settings.put(createDefaultSettings());
   },
@@ -53,17 +45,38 @@ export const settingsRepository = {
     >
   ) {
     const current = await this.getSettings();
+    const timestamp = nowIso();
 
     const next: AppSettings = {
       ...current,
       ...updates,
-      syncStatus: "pending",
+      syncStatus: "synced",
       syncError: null,
-      updatedAt: nowIso()
+      updatedAt: timestamp
     };
 
+    if (supabase) {
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const userId = next.userId || sessionData?.session?.user?.id;
+        if (userId) {
+          const profilePayload: Record<string, unknown> = { updated_at: timestamp };
+          if (updates.currencyCode !== undefined) profilePayload.preferred_currency = updates.currencyCode;
+          if (updates.language !== undefined) profilePayload.preferred_language = updates.language;
+          if (updates.themeMode !== undefined) profilePayload.theme_mode = updates.themeMode;
+          if (updates.onboardingComplete !== undefined) profilePayload.onboarding_completed = updates.onboardingComplete;
+          if (updates.tutorialCompletedIds !== undefined) {
+            profilePayload.tutorial_completed_ids = updates.tutorialCompletedIds.join(",");
+          }
+
+          await supabase.from("profiles").update(profilePayload).eq("id", userId);
+        }
+      } catch (err) {
+        console.warn("[Direct DB] Failed to update profile in Supabase:", err);
+      }
+    }
+
     await appDb.settings.put(next);
-    await syncRepository.enqueue("settings", next.id, "update", JSON.stringify(next));
     return next;
   },
 
@@ -92,27 +105,10 @@ export const settingsRepository = {
       return current;
     }
 
-    const next = await this.updateSettings({
-      tutorialCompletedIds: [...current.tutorialCompletedIds, tutorialId]
+    const nextTutorials = [...current.tutorialCompletedIds, tutorialId];
+    return this.updateSettings({
+      tutorialCompletedIds: nextTutorials
     });
-
-    if (supabase) {
-      try {
-        const { data } = await supabase.auth.getSession();
-        const userId = data.session?.user?.id;
-        if (userId) {
-          await supabase
-            .from("profiles")
-            .update({
-              tutorial_completed_ids: next.tutorialCompletedIds.join(","),
-              updated_at: next.updatedAt
-            })
-            .eq("id", userId);
-        }
-      } catch (_) {}
-    }
-
-    return next;
   },
 
   async resetTutorials() {
@@ -131,17 +127,17 @@ export const settingsRepository = {
     updates: Partial<Pick<NotificationPreference, "enabled" | "reminderTime" | "timingMode" | "userId">>
   ) {
     const current = await this.getNotificationPreferences();
+    const timestamp = nowIso();
 
     const next: NotificationPreference = {
       ...current,
       ...updates,
-      syncStatus: "pending",
+      syncStatus: "synced",
       syncError: null,
-      updatedAt: nowIso()
+      updatedAt: timestamp
     };
 
     await appDb.notificationPreferences.put(next);
-    await syncRepository.enqueue("notificationPreferences", next.id, "update", JSON.stringify(next));
     return next;
   }
 };

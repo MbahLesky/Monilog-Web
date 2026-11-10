@@ -1,5 +1,5 @@
 import { appDb } from "@/db/dexie";
-import { syncRepository } from "@/db/repositories/sync-repository";
+import { supabase } from "@/lib/supabase-client";
 import type { Budget, BudgetPeriod, TransactionRecord } from "@/types";
 import { nowIso } from "@/utils/date-utils";
 
@@ -43,7 +43,6 @@ export const budgetsRepository = {
     const timestamp = nowIso();
     const period = input.period ?? "monthly";
 
-    // Check for existing budget for this category and period
     let existing: Budget | undefined;
     if (input.id) {
       existing = await appDb.budgets.get(input.id);
@@ -53,56 +52,64 @@ export const budgetsRepository = {
         .first();
     }
 
-    if (existing) {
-      const updated: Budget = {
-        ...existing,
-        amount: input.amount,
-        period,
-        userId: input.userId ?? existing.userId ?? null,
-        syncStatus: "pending",
-        syncError: null,
-        updatedAt: timestamp
-      };
-      await appDb.budgets.put(updated);
-      await syncRepository.enqueue("budgets", updated.id, "update", JSON.stringify(updated));
-      return updated;
+    const budgetId = existing?.id ?? input.id ?? generateUuid();
+    let currentUserId = input.userId ?? existing?.userId ?? null;
+
+    if (supabase) {
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        currentUserId = currentUserId || sessionData?.session?.user?.id || null;
+        if (currentUserId) {
+          await supabase.from("budgets").upsert({
+            id: budgetId,
+            user_id: currentUserId,
+            category_id: input.categoryId,
+            amount_minor: Math.round(input.amount * 100),
+            period,
+            updated_at: timestamp
+          });
+        }
+      } catch (e) {
+        console.error("[Direct DB] Failed to upsert budget:", e);
+      }
     }
 
-    const created: Budget = {
-      id: input.id ?? generateUuid(),
+    const record: Budget = {
+      id: budgetId,
       categoryId: input.categoryId,
       amount: input.amount,
       period,
-      userId: input.userId ?? null,
-      remoteId: null,
-      syncStatus: "pending",
+      userId: currentUserId,
+      remoteId: budgetId,
+      syncStatus: "synced",
       syncError: null,
-      lastSyncedAt: null,
-      createdAt: timestamp,
+      lastSyncedAt: timestamp,
+      createdAt: existing?.createdAt ?? timestamp,
       updatedAt: timestamp,
       deletedAt: null
     };
 
-    await appDb.budgets.add(created);
-    await syncRepository.enqueue("budgets", created.id, "create", JSON.stringify(created));
-    return created;
+    await appDb.budgets.put(record);
+    return record;
   },
 
   async deleteBudget(id: string): Promise<void> {
     const existing = await appDb.budgets.get(id);
     if (!existing) return;
 
-    const timestamp = nowIso();
-    const deleted: Budget = {
-      ...existing,
-      deletedAt: timestamp,
-      syncStatus: "pending",
-      syncError: null,
-      updatedAt: timestamp
-    };
+    if (supabase) {
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const userId = existing.userId || sessionData?.session?.user?.id;
+        if (userId) {
+          await supabase.from("budgets").delete().eq("id", id).eq("user_id", userId);
+        }
+      } catch (e) {
+        console.error("[Direct DB] Failed to delete budget:", e);
+      }
+    }
 
-    await appDb.budgets.put(deleted);
-    await syncRepository.enqueue("budgets", id, "delete", JSON.stringify(deleted));
+    await appDb.budgets.delete(id);
   },
 
   calculateProgress(budgets: Budget[], transactions: TransactionRecord[]): BudgetProgress[] {
@@ -111,27 +118,18 @@ export const budgetsRepository = {
     const currentMonth = now.getMonth();
 
     return budgets.map((budget) => {
-      // Filter expenses for this category in current month
       const spent = transactions
         .filter((t) => {
           if (t.deletedAt || t.type !== "expense" || t.categoryId !== budget.categoryId) {
             return false;
           }
           const tDate = new Date(t.transactionDate);
-          if (budget.period === "monthly") {
-            return tDate.getFullYear() === currentYear && tDate.getMonth() === currentMonth;
-          }
-          if (budget.period === "yearly") {
-            return tDate.getFullYear() === currentYear;
-          }
-          // Default weekly / fallback: last 7 days
-          const diffDays = (now.getTime() - tDate.getTime()) / (1000 * 3600 * 24);
-          return diffDays >= 0 && diffDays <= 7;
+          return tDate.getFullYear() === currentYear && tDate.getMonth() === currentMonth;
         })
-        .reduce((sum, t) => sum + (t.amount || 0), 0);
+        .reduce((sum, t) => sum + t.amount, 0);
 
       const remaining = Math.max(0, budget.amount - spent);
-      const percentage = budget.amount > 0 ? Math.min(Math.round((spent / budget.amount) * 100), 200) : 0;
+      const percentage = budget.amount > 0 ? Math.min(100, Math.round((spent / budget.amount) * 100)) : 0;
       const isOverBudget = spent > budget.amount;
 
       return {

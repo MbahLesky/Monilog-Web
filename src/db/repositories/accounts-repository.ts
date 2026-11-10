@@ -1,10 +1,9 @@
 import { appDb, getOptionalTable } from "@/db/dexie";
 import { createDefaultAccounts } from "@/db/seed/default-records";
+import { supabase } from "@/lib/supabase-client";
 import type { Account, AccountBalanceSnapshot, AccountType, TransactionRecord, TransferRecord } from "@/types";
 import { nowIso } from "@/utils/date-utils";
 import { createId } from "@/utils/id";
-import { syncRepository } from "@/db/repositories/sync-repository";
-import { syncEngine } from "@/services/sync-engine";
 
 async function ensureDefaultAccounts() {
   const count = await appDb.accounts.count();
@@ -94,16 +93,38 @@ export const accountsRepository = {
       displayOrder: existingAccounts.length,
       userId: input.userId ?? null,
       remoteId: null,
-      syncStatus: "pending",
+      syncStatus: "synced",
       syncError: null,
-      lastSyncedAt: null,
+      lastSyncedAt: timestamp,
       createdAt: timestamp,
       updatedAt: timestamp,
       deletedAt: null
     };
 
+    if (supabase) {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const userId = input.userId || sessionData?.session?.user?.id;
+      if (userId) {
+        account.userId = userId;
+        const { error } = await supabase.from("accounts").insert({
+          id: account.id,
+          user_id: userId,
+          name: account.name,
+          type: account.type,
+          opening_balance_minor: Math.round(account.openingBalance * 100),
+          currency_code: account.currencyCode || "XAF",
+          is_default: false,
+          display_order: account.displayOrder,
+          updated_at: timestamp
+        });
+        if (error) {
+          console.error("[Direct DB] Failed to create account in Supabase:", error);
+          throw error;
+        }
+      }
+    }
+
     await appDb.accounts.add(account);
-    await syncRepository.enqueue("accounts", account.id, "create", JSON.stringify(account));
     return account;
   },
 
@@ -116,27 +137,50 @@ export const accountsRepository = {
       throw new Error("Account not found.");
     }
 
+    const timestamp = nowIso();
     const next: Account = {
       ...current,
       ...updates,
-      syncStatus: "pending",
+      syncStatus: "synced",
       syncError: null,
-      updatedAt: nowIso()
+      updatedAt: timestamp
     };
 
+    if (supabase) {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const userId = next.userId || sessionData?.session?.user?.id;
+      if (userId) {
+        const payload: Record<string, unknown> = { updated_at: timestamp };
+        if (updates.name !== undefined) payload.name = updates.name.trim();
+        if (updates.type !== undefined) payload.type = updates.type;
+        if (updates.openingBalance !== undefined) {
+          payload.opening_balance_minor = Math.round(updates.openingBalance * 100);
+        }
+        if (updates.displayOrder !== undefined) payload.display_order = updates.displayOrder;
+
+        const { error } = await supabase
+          .from("accounts")
+          .update(payload)
+          .eq("id", id)
+          .eq("user_id", userId);
+
+        if (error) {
+          console.error("[Direct DB] Failed to update account in Supabase:", error);
+          throw error;
+        }
+      }
+    }
+
     await appDb.accounts.put(next);
-    await syncRepository.enqueue("accounts", next.id, "update", JSON.stringify(next));
     return next;
   },
 
   async saveOpeningBalances(rows: Array<{ id: string; balance: number }>) {
     await Promise.all(
       rows.map(async (row) => {
-        const next = await this.updateAccount(row.id, {
+        return this.updateAccount(row.id, {
           openingBalance: row.balance
         });
-        await syncEngine.pushEntityImmediate("accounts", next.id, "update");
-        return next;
       })
     );
   },
@@ -147,16 +191,25 @@ export const accountsRepository = {
       return;
     }
 
-    const next: Account = {
-      ...account,
-      deletedAt: nowIso(),
-      syncStatus: "pending",
-      syncError: null,
-      updatedAt: nowIso()
-    };
+    const timestamp = nowIso();
+    if (supabase) {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const userId = account.userId || sessionData?.session?.user?.id;
+      if (userId) {
+        const { error } = await supabase
+          .from("accounts")
+          .update({ deleted_at: timestamp, updated_at: timestamp })
+          .eq("id", id)
+          .eq("user_id", userId);
 
-    await appDb.accounts.put(next);
-    await syncRepository.enqueue("accounts", next.id, "delete", JSON.stringify(next));
+        if (error) {
+          console.error("[Direct DB] Failed to soft-delete account in Supabase:", error);
+          throw error;
+        }
+      }
+    }
+
+    await appDb.accounts.update(id, { deletedAt: timestamp, updatedAt: timestamp });
   },
 
   async stampOwnership(userId: string) {

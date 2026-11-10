@@ -1,11 +1,10 @@
 import { isWithinInterval, parseISO } from "date-fns";
 import { appDb } from "@/db/dexie";
 import { settingsRepository } from "@/db/repositories/settings-repository";
+import { supabase } from "@/lib/supabase-client";
 import type { TransactionFilters, TransactionListItem, TransactionRecord } from "@/types";
 import { getRangeBounds, nowIso } from "@/utils/date-utils";
 import { createId } from "@/utils/id";
-import { syncRepository } from "@/db/repositories/sync-repository";
-import { syncEngine } from "@/services/sync-engine";
 
 function matchesDateRange(transactionDate: string, filters: TransactionFilters) {
   if (filters.range === "all") {
@@ -111,17 +110,40 @@ export const transactionsRepository = {
       transactionDate: input.transactionDate,
       userId: input.userId ?? null,
       remoteId: null,
-      syncStatus: "pending",
+      syncStatus: "synced",
       syncError: null,
-      lastSyncedAt: null,
+      lastSyncedAt: timestamp,
       createdAt: timestamp,
       updatedAt: timestamp,
       deletedAt: null
     };
 
+    if (supabase) {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const userId = input.userId || sessionData?.session?.user?.id;
+      if (userId) {
+        transaction.userId = userId;
+        const { error } = await supabase.from("transactions").insert({
+          id: transaction.id,
+          user_id: userId,
+          account_id: transaction.accountId,
+          category_id: transaction.categoryId || null,
+          type: transaction.type,
+          amount_minor: Math.round(transaction.amount * 100),
+          currency_code: transaction.currencyCode || "XAF",
+          description: transaction.description || "",
+          affects_account_balance: transaction.affectsAccountBalance ?? true,
+          transaction_date: transaction.transactionDate,
+          updated_at: timestamp
+        });
+        if (error) {
+          console.error("[Direct DB] Failed to create transaction in Supabase:", error);
+          throw error;
+        }
+      }
+    }
+
     await appDb.transactions.add(transaction);
-    await syncRepository.enqueue("transactions", transaction.id, "create", JSON.stringify(transaction));
-    await syncEngine.pushEntityImmediate("transactions", transaction.id, "create");
     return transaction;
   },
 
@@ -139,17 +161,42 @@ export const transactionsRepository = {
       throw new Error("Transaction not found.");
     }
 
+    const timestamp = nowIso();
     const next: TransactionRecord = {
       ...current,
       ...updates,
-      syncStatus: "pending",
+      syncStatus: "synced",
       syncError: null,
-      updatedAt: nowIso()
+      updatedAt: timestamp
     };
 
+    if (supabase) {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const userId = next.userId || sessionData?.session?.user?.id;
+      if (userId) {
+        const payload: Record<string, unknown> = { updated_at: timestamp };
+        if (updates.amount !== undefined) payload.amount_minor = Math.round(updates.amount * 100);
+        if (updates.type !== undefined) payload.type = updates.type;
+        if (updates.accountId !== undefined) payload.account_id = updates.accountId;
+        if (updates.categoryId !== undefined) payload.category_id = updates.categoryId || null;
+        if (updates.description !== undefined) payload.description = updates.description.trim();
+        if (updates.affectsAccountBalance !== undefined) payload.affects_account_balance = updates.affectsAccountBalance;
+        if (updates.transactionDate !== undefined) payload.transaction_date = updates.transactionDate;
+
+        const { error } = await supabase
+          .from("transactions")
+          .update(payload)
+          .eq("id", id)
+          .eq("user_id", userId);
+
+        if (error) {
+          console.error("[Direct DB] Failed to update transaction in Supabase:", error);
+          throw error;
+        }
+      }
+    }
+
     await appDb.transactions.put(next);
-    await syncRepository.enqueue("transactions", next.id, "update", JSON.stringify(next));
-    await syncEngine.pushEntityImmediate("transactions", next.id, "update");
     return next;
   },
 
@@ -159,17 +206,25 @@ export const transactionsRepository = {
       return;
     }
 
-    const next: TransactionRecord = {
-      ...current,
-      deletedAt: nowIso(),
-      syncStatus: "pending",
-      syncError: null,
-      updatedAt: nowIso()
-    };
+    const timestamp = nowIso();
+    if (supabase) {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const userId = current.userId || sessionData?.session?.user?.id;
+      if (userId) {
+        const { error } = await supabase
+          .from("transactions")
+          .update({ deleted_at: timestamp, updated_at: timestamp })
+          .eq("id", id)
+          .eq("user_id", userId);
 
-    await appDb.transactions.put(next);
-    await syncRepository.enqueue("transactions", next.id, "delete", JSON.stringify(next));
-    await syncEngine.pushEntityImmediate("transactions", next.id, "delete");
+        if (error) {
+          console.error("[Direct DB] Failed to soft-delete transaction in Supabase:", error);
+          throw error;
+        }
+      }
+    }
+
+    await appDb.transactions.update(id, { deletedAt: timestamp, updatedAt: timestamp });
   },
 
   async findLikelyDuplicate(input: {

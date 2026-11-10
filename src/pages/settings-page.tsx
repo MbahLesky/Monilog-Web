@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
@@ -8,7 +8,6 @@ import {
   ChevronRight,
   Coins,
   Copy,
-  DatabaseBackup,
   FileDown,
   FolderKanban,
   Landmark,
@@ -17,17 +16,6 @@ import {
   ShieldCheck,
   UserCircle2
 } from "lucide-react";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger
-} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -37,8 +25,6 @@ import { Switch } from "@/components/ui/switch";
 import { accountsRepository } from "@/db/repositories/accounts-repository";
 import { categoriesRepository } from "@/db/repositories/categories-repository";
 import { settingsRepository } from "@/db/repositories/settings-repository";
-import { workspaceRepository } from "@/db/repositories/workspace-repository";
-import { jsonBackupService } from "@/services/json-backup-service";
 import { syncEngine } from "@/services/sync-engine";
 import { SUPPORTED_CURRENCIES } from "@/lib/constants";
 import { supabase } from "@/lib/supabase-client";
@@ -56,7 +42,6 @@ export type SettingsTabId =
   | "theme"
   | "categories"
   | "import_export"
-  | "backup_restore"
   | "tutorials";
 
 const APP_VERSION = "1.3.3";
@@ -73,7 +58,6 @@ export function SettingsPage() {
   const categories = useLiveQuery(() => categoriesRepository.listActive(), []);
   const setThemeMode = useUiStore((state) => state.setThemeMode);
   const startTour = useUiStore((state) => state.startTour);
-  const restoreInputRef = useRef<HTMLInputElement>(null);
 
   const [activeTab, setActiveTab] = useState<SettingsTabId>("profile");
   const [accountBalances, setAccountBalances] = useState<Record<string, string>>({});
@@ -108,31 +92,6 @@ export function SettingsPage() {
   async function handleLanguageChange(language: AppLanguage) {
     await settingsRepository.setLanguage(language);
     toast.success("Language updated.");
-  }
-
-  async function handleCreateBackup() {
-    try {
-      await jsonBackupService.createBackup(profile?.name ?? "");
-      toast.success("Backup downloaded.");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Unable to create the backup.");
-    }
-  }
-
-  async function handleRestoreBackup(event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file) {
-      return;
-    }
-
-    try {
-      const content = await file.text();
-      await jsonBackupService.restoreBackup(content, userId);
-      toast.success("Backup restored.");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Unable to restore the backup.");
-    }
   }
 
   async function handleSaveBalances() {
@@ -209,12 +168,6 @@ export function SettingsPage() {
     }
   }
 
-  async function handleReset() {
-    await workspaceRepository.resetAppData();
-    toast.success("App data reset. Onboarding is starting over.");
-    navigate(ROUTES.onboardingCurrency);
-  }
-
   async function handleSignOut() {
     try {
       await signOut();
@@ -286,13 +239,6 @@ export function SettingsPage() {
       subtitle: "Financial statement PDF & CSV spreadsheets",
       badge: "PDF & CSV",
       icon: FileDown
-    },
-    {
-      id: "backup_restore",
-      title: "Backup/Restore",
-      subtitle: "Full JSON ledger snapshot & reset",
-      badge: "JSON",
-      icon: DatabaseBackup
     },
     {
       id: "tutorials",
@@ -638,6 +584,18 @@ export function SettingsPage() {
                       : "Running in guest mode. Sign in to connect directly to your Moniilog Cloud Database."}
                   </p>
                   <div className="mt-4 flex flex-wrap gap-2">
+                    {userId && (
+                      <Button
+                        variant="primary"
+                        onClick={async () => {
+                          toast.info("Refreshing data from cloud database...");
+                          await syncEngine.run(userId);
+                          toast.success("All data refreshed from database.");
+                        }}
+                      >
+                        Refresh from Cloud Database
+                      </Button>
+                    )}
                     <Button variant="outline" onClick={() => void handleSignOut()}>
                       Sign out of this session
                     </Button>
@@ -767,62 +725,6 @@ export function SettingsPage() {
                 </div>
               </CardContent>
             </Card>
-          )}
-
-          {activeTab === "backup_restore" && (
-            <>
-              <Card>
-                <CardHeader>
-                  <CardTitle>Backup & Restore</CardTitle>
-                  <CardDescription>
-                    Export a complete JSON backup of your whole ledger, or restore one. Backups are interchangeable with the Moniilog mobile app.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="flex flex-wrap gap-3">
-                  <Button onClick={() => void handleCreateBackup()}>
-                    Create JSON Backup
-                  </Button>
-                  <Button variant="outline" onClick={() => restoreInputRef.current?.click()}>
-                    Restore JSON Backup
-                  </Button>
-                  <input
-                    ref={restoreInputRef}
-                    type="file"
-                    accept="application/json,.json"
-                    className="hidden"
-                    onChange={(event) => void handleRestoreBackup(event)}
-                  />
-                </CardContent>
-              </Card>
-
-              <Card className="border-accent/20">
-                <CardHeader>
-                  <CardTitle>Reset Local App Data</CardTitle>
-                  <CardDescription>
-                    This clears the local workspace, reseeds system defaults, and restarts onboarding.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button variant="accent">Reset app data</Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>Reset local app data?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                          This clears transactions, categories, accounts, reminders, import/export history, and sync metadata in this browser. System defaults will be re-created and onboarding will restart.
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction onClick={() => void handleReset()}>Reset</AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
-                </CardContent>
-              </Card>
-            </>
           )}
 
           {activeTab === "tutorials" && (

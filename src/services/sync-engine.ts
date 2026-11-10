@@ -9,7 +9,7 @@ import type {
   NotificationPreference,
   RecurringTransaction,
   SyncEntityName,
-  SyncOperationRecord,
+  SyncSummary,
   TransferRecord,
   TransactionRecord
 } from "@/types";
@@ -47,39 +47,7 @@ function getSyncTable(entityName: SyncEntityName) {
   return appDb.notificationPreferences;
 }
 
-async function markLocalSynced(entityName: SyncEntityName, entityId: string, remoteId: string) {
-  const table = getSyncTable(entityName) as {
-    get: (id: string) => Promise<SyncableRecord | undefined>;
-    put: (record: SyncableRecord) => Promise<unknown>;
-  };
-  const record = await table.get(entityId);
-  if (!record) return;
-
-  await table.put({
-    ...record,
-    remoteId,
-    syncStatus: "synced",
-    syncError: null,
-    lastSyncedAt: nowIso()
-  });
-}
-
-async function markLocalFailed(entityName: SyncEntityName, entityId: string, errorMessage: string) {
-  const table = getSyncTable(entityName) as {
-    get: (id: string) => Promise<SyncableRecord | undefined>;
-    put: (record: SyncableRecord) => Promise<unknown>;
-  };
-  const record = await table.get(entityId);
-  if (!record) return;
-
-  await table.put({
-    ...record,
-    syncStatus: "failed",
-    syncError: errorMessage
-  });
-}
-
-async function writeEntityToDatabase(
+export async function writeEntityToDatabase(
   entityName: SyncEntityName,
   entityId: string,
   userId: string,
@@ -220,331 +188,226 @@ async function writeEntityToDatabase(
     });
     if (error) throw error;
   }
-
-  await markLocalSynced(entityName, entityId, record.id);
-}
-
-async function pushOperation(operation: SyncOperationRecord, userId: string) {
-  await syncRepository.markProcessing(operation.id);
-  try {
-    await writeEntityToDatabase(operation.entityName, operation.entityId, userId, operation.operation);
-    await syncRepository.remove(operation.id);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Database write failed.";
-    await markLocalFailed(operation.entityName, operation.entityId, message);
-    await syncRepository.markFailed(operation.id, message);
-    throw new Error(message);
-  }
-}
-
-async function pullTable(entityName: SyncEntityName, userId: string) {
-  const client = assertSupabase();
-  const table = getSyncTable(entityName);
-  const pendingOps = await syncRepository.listPending(200);
-  const pendingIds = new Set(
-    pendingOps.filter((op) => op.entityName === entityName).map((op) => op.entityId)
-  );
-
-  if (entityName === "accounts") {
-    const { data, error } = await client
-      .from("accounts")
-      .select("*")
-      .eq("user_id", userId)
-      .order("display_order", { ascending: true });
-    if (error) return;
-
-    const remoteIds = new Set<string>();
-    for (const row of data ?? []) {
-      if (row.is_default && row.id !== "default-cash" && row.id !== "default-bank") {
-        continue;
-      }
-      remoteIds.add(row.id);
-      if (pendingIds.has(row.id)) continue;
-
-      const remoteRecord: Account = {
-        id: row.id,
-        userId: row.user_id,
-        presetKey: row.preset_key,
-        name: row.name,
-        type: row.type,
-        openingBalance: Number(row.opening_balance_minor || 0) / 100,
-        currencyCode: row.currency_code,
-        isDefault: row.is_default,
-        displayOrder: row.display_order,
-        balanceResetAt: row.balance_reset_at || "1970-01-01T00:00:00.000Z",
-        createdAt: row.created_at,
-        updatedAt: row.updated_at,
-        deletedAt: row.deleted_at,
-        syncStatus: "synced",
-        syncError: null,
-        lastSyncedAt: nowIso()
-      };
-      await table.put(remoteRecord as never);
-    }
-
-    if (remoteIds.size === 0) {
-      const localAccounts = await appDb.accounts.toArray();
-      for (const local of localAccounts) {
-        if (!local.deletedAt) {
-          await writeEntityToDatabase("accounts", local.id, userId, "create");
-        }
-      }
-      return;
-    }
-
-    const localAccounts = await appDb.accounts.toArray();
-    for (const local of localAccounts) {
-      if (!remoteIds.has(local.id) && !pendingIds.has(local.id)) {
-        await appDb.accounts.delete(local.id);
-      }
-    }
-  } else if (entityName === "categories") {
-    const { data, error } = await client
-      .from("categories")
-      .select("*")
-      .eq("user_id", userId)
-      .order("updated_at", { ascending: true });
-    if (error) return;
-
-    let hasActiveRemote = false;
-    for (const row of data ?? []) {
-      if (!row.deleted_at) hasActiveRemote = true;
-      if (pendingIds.has(row.id)) continue;
-
-      const remoteRecord: Category = {
-        id: row.id,
-        userId: row.user_id,
-        presetKey: row.preset_key,
-        name: row.name,
-        type: row.type,
-        iconKey: row.icon_key,
-        colorKey: row.color_key,
-        isDefault: row.is_default,
-        displayOrder: row.display_order,
-        createdAt: row.created_at,
-        updatedAt: row.updated_at,
-        deletedAt: row.deleted_at,
-        syncStatus: "synced",
-        syncError: null,
-        lastSyncedAt: nowIso()
-      };
-      await table.put(remoteRecord as never);
-    }
-
-    if (!hasActiveRemote) {
-      const localCategories = await appDb.categories.toArray();
-      for (const local of localCategories) {
-        if (!local.deletedAt) {
-          await writeEntityToDatabase("categories", local.id, userId, "create");
-        }
-      }
-    }
-  } else if (entityName === "transactions") {
-    const { data, error } = await client
-      .from("transactions")
-      .select("*")
-      .eq("user_id", userId)
-      .order("transaction_date", { ascending: false });
-    if (error) {
-      console.error("[SyncEngine] Failed to pull transactions:", error);
-      return;
-    }
-
-    const remoteIds = new Set<string>();
-    for (const row of data ?? []) {
-      remoteIds.add(row.id);
-      if (pendingIds.has(row.id)) continue;
-
-      const remoteRecord: TransactionRecord = {
-        id: row.id,
-        userId: row.user_id,
-        accountId: row.account_id,
-        categoryId: row.category_id,
-        type: row.type,
-        amount: Number(row.amount_minor || 0) / 100,
-        currencyCode: row.currency_code,
-        description: row.description,
-        affectsAccountBalance: row.affects_account_balance ?? true,
-        transactionDate: row.transaction_date,
-        createdAt: row.created_at,
-        updatedAt: row.updated_at,
-        deletedAt: row.deleted_at,
-        syncStatus: "synced",
-        syncError: null,
-        lastSyncedAt: nowIso()
-      };
-      await table.put(remoteRecord as never);
-    }
-
-    const localTransactions = await appDb.transactions.toArray();
-    for (const local of localTransactions) {
-      if (!remoteIds.has(local.id) && !pendingIds.has(local.id)) {
-        await appDb.transactions.delete(local.id);
-      }
-    }
-  } else if (entityName === "transfers") {
-    const { data, error } = await client
-      .from("transfers")
-      .select("*")
-      .eq("user_id", userId)
-      .order("transfer_date", { ascending: false });
-    if (error) return;
-
-    const remoteIds = new Set<string>();
-    for (const row of data ?? []) {
-      remoteIds.add(row.id);
-      if (pendingIds.has(row.id)) continue;
-
-      const remoteRecord: TransferRecord = {
-        id: row.id,
-        userId: row.user_id,
-        fromAccountId: row.from_account_id,
-        toAccountId: row.to_account_id,
-        amount: Number(row.amount_minor || 0) / 100,
-        fee: (Number(row.source_fee_minor || 0) + Number(row.destination_fee_minor || 0)) / 100,
-        sourceFee: Number(row.source_fee_minor || 0) / 100,
-        destinationFee: Number(row.destination_fee_minor || 0) / 100,
-        currencyCode: row.currency_code,
-        description: row.description,
-        transferDate: row.transfer_date,
-        createdAt: row.created_at,
-        updatedAt: row.updated_at,
-        deletedAt: row.deleted_at,
-        syncStatus: "synced",
-        syncError: null,
-        lastSyncedAt: nowIso()
-      };
-      await table.put(remoteRecord as never);
-    }
-
-    const transfersTable = getOptionalTable<TransferRecord>("transfers");
-    if (transfersTable) {
-      const localTransfers = await transfersTable.toArray();
-      for (const local of localTransfers) {
-        if (!remoteIds.has(local.id) && !pendingIds.has(local.id)) {
-          await transfersTable.delete(local.id);
-        }
-      }
-    }
-  } else if (entityName === "budgets") {
-    const { data, error } = await client
-      .from("budgets")
-      .select("*")
-      .eq("user_id", userId)
-      .order("updated_at", { ascending: true });
-    if (error) return;
-
-    const remoteIds = new Set<string>();
-    for (const row of data ?? []) {
-      remoteIds.add(row.id);
-      if (pendingIds.has(row.id)) continue;
-
-      const remoteRecord: Budget = {
-        id: row.id,
-        userId: row.user_id,
-        categoryId: row.category_id,
-        amount: Number(row.amount_minor || 0) / 100,
-        period: row.period,
-        createdAt: row.created_at,
-        updatedAt: row.updated_at,
-        deletedAt: null,
-        syncStatus: "synced",
-        syncError: null,
-        lastSyncedAt: nowIso()
-      };
-      await table.put(remoteRecord as never);
-    }
-
-    const localBudgets = await appDb.budgets.toArray();
-    for (const local of localBudgets) {
-      if (!remoteIds.has(local.id) && !pendingIds.has(local.id)) {
-        await appDb.budgets.delete(local.id);
-      }
-    }
-  } else if (entityName === "recurringTransactions") {
-    const { data, error } = await client
-      .from("recurring_transactions")
-      .select("*")
-      .eq("user_id", userId)
-      .order("updated_at", { ascending: true });
-    if (error) return;
-
-    const remoteIds = new Set<string>();
-    for (const row of data ?? []) {
-      remoteIds.add(row.id);
-      if (pendingIds.has(row.id)) continue;
-
-      const remoteRecord: RecurringTransaction = {
-        id: row.id,
-        userId: row.user_id,
-        accountId: row.account_id,
-        categoryId: row.category_id,
-        type: row.type,
-        amount: Number(row.amount_minor || 0) / 100,
-        description: row.description,
-        frequency: row.frequency,
-        nextOccurrence: row.next_occurrence,
-        isActive: row.is_active,
-        createdAt: row.created_at,
-        updatedAt: row.updated_at,
-        deletedAt: null,
-        syncStatus: "synced",
-        syncError: null,
-        lastSyncedAt: nowIso()
-      };
-      await table.put(remoteRecord as never);
-    }
-
-    const localRecurring = await appDb.recurringTransactions.toArray();
-    for (const local of localRecurring) {
-      if (!remoteIds.has(local.id) && !pendingIds.has(local.id)) {
-        await appDb.recurringTransactions.delete(local.id);
-      }
-    }
-  } else if (entityName === "settings") {
-    const { data: profile } = await client.from("profiles").select("*").eq("id", userId).maybeSingle();
-    if (profile && !pendingIds.has("app-settings")) {
-      const local = (await table.get("app-settings")) as AppSettings | undefined;
-      const localTourDone =
-        typeof localStorage !== "undefined" &&
-        localStorage.getItem("moniilog_tour_completed") === "true";
-      const remoteTutorials =
-        typeof profile.tutorial_completed_ids === "string"
-          ? profile.tutorial_completed_ids
-              .split(",")
-              .map((s: string) => s.trim())
-              .filter(Boolean)
-          : Array.isArray(profile.tutorial_completed_ids)
-            ? profile.tutorial_completed_ids
-            : [];
-      const localTutorials = local?.tutorialCompletedIds ?? [];
-      const mergedTutorials = Array.from(
-        new Set([
-          ...localTutorials,
-          ...remoteTutorials,
-          ...(localTourDone ? ["app-tour"] : [])
-        ])
-      );
-      await table.put({
-        id: "app-settings",
-        userId,
-        remoteId: userId,
-        currencyCode: profile.preferred_currency || local?.currencyCode || "XAF",
-        language: (profile.preferred_language as "en" | "fr") || local?.language || "en",
-        themeMode: (profile.theme_mode as "light" | "dark" | "system") || local?.themeMode || "dark",
-        onboardingComplete: true,
-        tutorialCompletedIds: mergedTutorials,
-        createdAt: local?.createdAt || profile.created_at || nowIso(),
-        updatedAt: profile.updated_at || nowIso(),
-        syncStatus: "synced",
-        syncError: null,
-        lastSyncedAt: nowIso()
-      } as never);
-    }
-  }
 }
 
 let isSyncRunning = false;
+
+export async function loadAllFromCloud(userId: string): Promise<SyncSummary> {
+  if (!supabase) {
+    return { pending: 0, failed: 0, processing: false, lastSyncedAt: null };
+  }
+
+  const client = supabase;
+  const [
+    { data: profile },
+    { data: accounts },
+    { data: categories },
+    { data: transactions },
+    { data: transfers },
+    { data: budgets },
+    { data: recurring }
+  ] = await Promise.all([
+    client.from("profiles").select("*").eq("id", userId).maybeSingle(),
+    client.from("accounts").select("*").eq("user_id", userId).order("display_order", { ascending: true }),
+    client.from("categories").select("*").eq("user_id", userId).order("display_order", { ascending: true }),
+    client.from("transactions").select("*").eq("user_id", userId).order("transaction_date", { ascending: false }),
+    client.from("transfers").select("*").eq("user_id", userId).order("transfer_date", { ascending: false }),
+    client.from("budgets").select("*").eq("user_id", userId),
+    client.from("recurring_transactions").select("*").eq("user_id", userId)
+  ]);
+
+  // Settings / Profile
+  if (profile) {
+    const tutorialIds =
+      typeof profile.tutorial_completed_ids === "string"
+        ? profile.tutorial_completed_ids.split(",").map((s: string) => s.trim()).filter(Boolean)
+        : Array.isArray(profile.tutorial_completed_ids)
+          ? profile.tutorial_completed_ids
+          : [];
+
+    await appDb.settings.put({
+      id: "app-settings",
+      userId,
+      remoteId: userId,
+      currencyCode: profile.preferred_currency || "XAF",
+      language: (profile.preferred_language as "en" | "fr") || "en",
+      themeMode: (profile.theme_mode as "light" | "dark" | "system") || "system",
+      onboardingComplete: profile.onboarding_completed ?? true,
+      tutorialCompletedIds: tutorialIds,
+      createdAt: profile.created_at || nowIso(),
+      updatedAt: profile.updated_at || nowIso(),
+      syncStatus: "synced",
+      syncError: null,
+      lastSyncedAt: nowIso()
+    });
+  }
+
+  // Accounts
+  if (accounts && accounts.length > 0) {
+    const mappedAccounts: Account[] = accounts.map((row) => ({
+      id: row.id,
+      userId: row.user_id,
+      presetKey: row.preset_key,
+      name: row.name,
+      type: row.type,
+      openingBalance: Number(row.opening_balance_minor || 0) / 100,
+      currencyCode: row.currency_code || "XAF",
+      isDefault: row.is_default ?? false,
+      displayOrder: row.display_order ?? 0,
+      balanceResetAt: row.balance_reset_at || null,
+      createdAt: row.created_at || nowIso(),
+      updatedAt: row.updated_at || nowIso(),
+      deletedAt: row.deleted_at || null,
+      remoteId: row.id,
+      syncStatus: "synced",
+      syncError: null,
+      lastSyncedAt: nowIso()
+    }));
+    await appDb.accounts.clear();
+    await appDb.accounts.bulkPut(mappedAccounts);
+  }
+
+  // Categories
+  if (categories && categories.length > 0) {
+    const mappedCategories: Category[] = categories.map((row) => ({
+      id: row.id,
+      userId: row.user_id,
+      presetKey: row.preset_key,
+      name: row.name,
+      type: row.type,
+      iconKey: row.icon_key,
+      colorKey: row.color_key,
+      isDefault: row.is_default,
+      displayOrder: row.display_order,
+      createdAt: row.created_at || nowIso(),
+      updatedAt: row.updated_at || nowIso(),
+      deletedAt: row.deleted_at,
+      remoteId: row.id,
+      syncStatus: "synced",
+      syncError: null,
+      lastSyncedAt: nowIso()
+    }));
+    await appDb.categories.clear();
+    await appDb.categories.bulkPut(mappedCategories);
+  }
+
+  // Transactions
+  if (transactions) {
+    const mappedTransactions: TransactionRecord[] = transactions.map((row) => ({
+      id: row.id,
+      userId: row.user_id,
+      accountId: row.account_id,
+      categoryId: row.category_id,
+      type: row.type,
+      amount: Number(row.amount_minor || 0) / 100,
+      currencyCode: row.currency_code || "XAF",
+      description: row.description || "",
+      affectsAccountBalance: row.affects_account_balance ?? true,
+      transactionDate: row.transaction_date,
+      createdAt: row.created_at || nowIso(),
+      updatedAt: row.updated_at || nowIso(),
+      deletedAt: row.deleted_at || null,
+      remoteId: row.id,
+      syncStatus: "synced",
+      syncError: null,
+      lastSyncedAt: nowIso()
+    }));
+    await appDb.transactions.clear();
+    if (mappedTransactions.length > 0) {
+      await appDb.transactions.bulkPut(mappedTransactions);
+    }
+  }
+
+  // Transfers
+  if (transfers) {
+    const mappedTransfers: TransferRecord[] = transfers.map((row) => ({
+      id: row.id,
+      userId: row.user_id,
+      fromAccountId: row.from_account_id,
+      toAccountId: row.to_account_id,
+      amount: Number(row.amount_minor || 0) / 100,
+      fee: (Number(row.source_fee_minor || 0) + Number(row.destination_fee_minor || 0)) / 100,
+      sourceFee: Number(row.source_fee_minor || 0) / 100,
+      destinationFee: Number(row.destination_fee_minor || 0) / 100,
+      currencyCode: row.currency_code || "XAF",
+      description: row.description || "",
+      transferDate: row.transfer_date,
+      createdAt: row.created_at || nowIso(),
+      updatedAt: row.updated_at || nowIso(),
+      deletedAt: row.deleted_at || null,
+      remoteId: row.id,
+      syncStatus: "synced",
+      syncError: null,
+      lastSyncedAt: nowIso()
+    }));
+    const transfersTable = getOptionalTable<TransferRecord>("transfers");
+    if (transfersTable) {
+      await transfersTable.clear();
+      if (mappedTransfers.length > 0) {
+        await transfersTable.bulkPut(mappedTransfers);
+      }
+    }
+  }
+
+  // Budgets
+  if (budgets) {
+    const mappedBudgets: Budget[] = budgets.map((row) => ({
+      id: row.id,
+      userId: row.user_id,
+      categoryId: row.category_id,
+      amount: Number(row.amount_minor || 0) / 100,
+      period: row.period,
+      createdAt: row.created_at || nowIso(),
+      updatedAt: row.updated_at || nowIso(),
+      deletedAt: null,
+      remoteId: row.id,
+      syncStatus: "synced",
+      syncError: null,
+      lastSyncedAt: nowIso()
+    }));
+    await appDb.budgets.clear();
+    if (mappedBudgets.length > 0) {
+      await appDb.budgets.bulkPut(mappedBudgets);
+    }
+  }
+
+  // Recurring Transactions
+  if (recurring) {
+    const mappedRecurring: RecurringTransaction[] = recurring.map((row) => ({
+      id: row.id,
+      userId: row.user_id,
+      accountId: row.account_id,
+      categoryId: row.category_id,
+      type: row.type,
+      amount: Number(row.amount_minor || 0) / 100,
+      description: row.description || "",
+      frequency: row.frequency,
+      nextOccurrence: row.next_occurrence,
+      isActive: row.is_active,
+      createdAt: row.created_at || nowIso(),
+      updatedAt: row.updated_at || nowIso(),
+      deletedAt: null,
+      remoteId: row.id,
+      syncStatus: "synced",
+      syncError: null,
+      lastSyncedAt: nowIso()
+    }));
+    await appDb.recurringTransactions.clear();
+    if (mappedRecurring.length > 0) {
+      await appDb.recurringTransactions.bulkPut(mappedRecurring);
+    }
+  }
+
+  // Clear any legacy sync queue records
+  await syncRepository.clearAll();
+
+  return {
+    pending: 0,
+    failed: 0,
+    processing: false,
+    lastSyncedAt: nowIso()
+  };
+}
 
 export const syncEngine = {
   async pushEntityImmediate(
@@ -563,47 +426,23 @@ export const syncEngine = {
       if (opId) {
         await syncRepository.remove(opId);
       }
-      syncRepository.recordSyncSuccess();
-    } catch {
-      // Operation remains in syncOperations for next run
+    } catch (e) {
+      console.warn(`[Direct DB Write] ${entityName} error:`, e);
     }
   },
 
-  async run(userId: string) {
+  async run(userId: string): Promise<SyncSummary> {
     if (!navigator.onLine || !supabase) {
-      return syncRepository.summarize();
+      return { pending: 0, failed: 0, processing: false, lastSyncedAt: null };
     }
 
     if (isSyncRunning) {
-      return syncRepository.summarize();
+      return { pending: 0, failed: 0, processing: false, lastSyncedAt: nowIso() };
     }
 
     isSyncRunning = true;
     try {
-      const pendingOperations = await syncRepository.listPending();
-      for (const operation of pendingOperations) {
-        try {
-          await pushOperation(operation, userId);
-        } catch {
-          // Individual failure logged; proceed with other queue items
-        }
-      }
-
-      // Pull foundational data (settings, accounts, categories) first so
-      // transaction foreign keys and names resolve reliably without dangling relations.
-      await pullTable("settings", userId);
-      await pullTable("accounts", userId);
-      await pullTable("categories", userId);
-
-      await Promise.all([
-        pullTable("transactions", userId),
-        pullTable("transfers", userId),
-        pullTable("budgets", userId),
-        pullTable("recurringTransactions", userId)
-      ]);
-
-      syncRepository.recordSyncSuccess();
-      return syncRepository.summarize();
+      return await loadAllFromCloud(userId);
     } finally {
       isSyncRunning = false;
     }
@@ -613,15 +452,16 @@ export const syncEngine = {
     if (!supabase) return () => {};
 
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-    const schedulePull = (tableName: SyncEntityName) => {
-      if (isSyncRunning) return;
+    const scheduleRefresh = () => {
       if (debounceTimer) clearTimeout(debounceTimer);
       debounceTimer = setTimeout(async () => {
-        if (isSyncRunning) return;
-        await pullTable(tableName, userId);
-        syncRepository.recordSyncSuccess();
-        onUpdate?.();
-      }, 600);
+        try {
+          await loadAllFromCloud(userId);
+          onUpdate?.();
+        } catch (e) {
+          console.warn("[Realtime Refresh] error:", e);
+        }
+      }, 400);
     };
 
     const channel = supabase
@@ -629,32 +469,37 @@ export const syncEngine = {
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "transactions", filter: `user_id=eq.${userId}` },
-        () => schedulePull("transactions")
+        scheduleRefresh
       )
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "accounts", filter: `user_id=eq.${userId}` },
-        () => schedulePull("accounts")
+        scheduleRefresh
       )
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "categories", filter: `user_id=eq.${userId}` },
-        () => schedulePull("categories")
+        scheduleRefresh
       )
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "transfers", filter: `user_id=eq.${userId}` },
-        () => schedulePull("transfers")
+        scheduleRefresh
       )
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "budgets", filter: `user_id=eq.${userId}` },
-        () => schedulePull("budgets")
+        scheduleRefresh
       )
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "recurring_transactions", filter: `user_id=eq.${userId}` },
-        () => schedulePull("recurringTransactions")
+        scheduleRefresh
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "profiles", filter: `id=eq.${userId}` },
+        scheduleRefresh
       )
       .subscribe();
 

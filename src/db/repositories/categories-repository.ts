@@ -1,9 +1,9 @@
 import { appDb } from "@/db/dexie";
 import { createDefaultCategories } from "@/db/seed/default-records";
+import { supabase } from "@/lib/supabase-client";
 import type { Category, TransactionType } from "@/types";
 import { nowIso } from "@/utils/date-utils";
 import { createId } from "@/utils/id";
-import { syncRepository } from "@/db/repositories/sync-repository";
 
 async function ensureDefaultCategories() {
   const count = await appDb.categories.count();
@@ -59,16 +59,37 @@ export const categoriesRepository = {
       isDefault: false,
       userId: input.userId ?? null,
       remoteId: null,
-      syncStatus: "pending",
+      syncStatus: "synced",
       syncError: null,
-      lastSyncedAt: null,
+      lastSyncedAt: timestamp,
       createdAt: timestamp,
       updatedAt: timestamp,
       deletedAt: null
     };
 
+    if (supabase) {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const userId = input.userId || sessionData?.session?.user?.id;
+      if (userId) {
+        category.userId = userId;
+        const { error } = await supabase.from("categories").insert({
+          id: category.id,
+          user_id: userId,
+          name: category.name,
+          type: category.type,
+          icon_key: category.iconKey,
+          color_key: category.colorKey,
+          is_default: false,
+          updated_at: timestamp
+        });
+        if (error) {
+          console.error("[Direct DB] Failed to create category in Supabase:", error);
+          throw error;
+        }
+      }
+    }
+
     await appDb.categories.add(category);
-    await syncRepository.enqueue("categories", category.id, "create", JSON.stringify(category));
     return category;
   },
 
@@ -81,16 +102,38 @@ export const categoriesRepository = {
       throw new Error("Category not found.");
     }
 
+    const timestamp = nowIso();
     const next: Category = {
       ...current,
       ...updates,
-      syncStatus: "pending",
+      syncStatus: "synced",
       syncError: null,
-      updatedAt: nowIso()
+      updatedAt: timestamp
     };
 
+    if (supabase) {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const userId = next.userId || sessionData?.session?.user?.id;
+      if (userId) {
+        const payload: Record<string, unknown> = { updated_at: timestamp };
+        if (updates.name !== undefined) payload.name = updates.name.trim();
+        if (updates.colorKey !== undefined) payload.color_key = updates.colorKey;
+        if (updates.iconKey !== undefined) payload.icon_key = updates.iconKey;
+
+        const { error } = await supabase
+          .from("categories")
+          .update(payload)
+          .eq("id", id)
+          .eq("user_id", userId);
+
+        if (error) {
+          console.error("[Direct DB] Failed to update category in Supabase:", error);
+          throw error;
+        }
+      }
+    }
+
     await appDb.categories.put(next);
-    await syncRepository.enqueue("categories", next.id, "update", JSON.stringify(next));
     return next;
   },
 
@@ -100,16 +143,25 @@ export const categoriesRepository = {
       return;
     }
 
-    const next: Category = {
-      ...category,
-      deletedAt: nowIso(),
-      syncStatus: "pending",
-      syncError: null,
-      updatedAt: nowIso()
-    };
+    const timestamp = nowIso();
+    if (supabase) {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const userId = category.userId || sessionData?.session?.user?.id;
+      if (userId) {
+        const { error } = await supabase
+          .from("categories")
+          .update({ deleted_at: timestamp, updated_at: timestamp })
+          .eq("id", id)
+          .eq("user_id", userId);
 
-    await appDb.categories.put(next);
-    await syncRepository.enqueue("categories", next.id, "delete", JSON.stringify(next));
+        if (error) {
+          console.error("[Direct DB] Failed to soft-delete category in Supabase:", error);
+          throw error;
+        }
+      }
+    }
+
+    await appDb.categories.update(id, { deletedAt: timestamp, updatedAt: timestamp });
   },
 
   async stampOwnership(userId: string) {

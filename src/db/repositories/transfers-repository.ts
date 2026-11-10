@@ -2,8 +2,7 @@ import { isWithinInterval, parseISO } from "date-fns";
 import { appDb, getOptionalTable } from "@/db/dexie";
 import { accountsRepository } from "@/db/repositories/accounts-repository";
 import { settingsRepository } from "@/db/repositories/settings-repository";
-import { syncRepository } from "@/db/repositories/sync-repository";
-import { syncEngine } from "@/services/sync-engine";
+import { supabase } from "@/lib/supabase-client";
 import type { TransferFilters, TransferListItem, TransferRecord } from "@/types";
 import { getRangeBounds, nowIso } from "@/utils/date-utils";
 import { createId } from "@/utils/id";
@@ -45,8 +44,6 @@ interface TransferInput {
   userId?: string | null;
 }
 
-// Mirrors the Flutter app's transfer_logic.dart: the source account is debited
-// amount + sourceFee, and the destination account is credited amount - destinationFee.
 async function validateAndNormalize(input: TransferInput, existingTransferId?: string) {
   const transfersTable = getTransfersTable();
   if (!transfersTable) {
@@ -92,15 +89,17 @@ async function validateAndNormalize(input: TransferInput, existingTransferId?: s
   }
 
   let sourceBalance = balances.find((item) => item.id === input.fromAccountId)?.currentBalance ?? 0;
-  // When editing, add back the existing transfer's debit so the check uses the
-  // balance as if this transfer did not exist.
   if (existingTransfer && existingTransfer.fromAccountId === input.fromAccountId) {
     sourceBalance += existingTransfer.amount + existingTransfer.sourceFee;
   }
 
-  const totalDebit = input.amount + sourceFee;
-  if (sourceBalance + 0.0001 < totalDebit) {
-    throw new Error("Insufficient balance in the source account for amount plus fee.");
+  const requiredSource = input.amount + sourceFee;
+  if (sourceBalance < requiredSource) {
+    throw new Error(
+      `Insufficient funds in ${fromAccount.name}. Available: ${sourceBalance.toFixed(
+        2
+      )}, required (with fee): ${requiredSource.toFixed(2)}.`
+    );
   }
 
   return { sourceFee, destinationFee };
@@ -118,6 +117,11 @@ export const transfersRepository = {
   },
 
   async listWithRelations(filters: TransferFilters = defaultTransferFilters): Promise<TransferListItem[]> {
+    const transfersTable = getTransfersTable();
+    if (!transfersTable) {
+      return [];
+    }
+
     const [transfers, accounts, settings] = await Promise.all([
       this.listActive(),
       appDb.accounts.toArray(),
@@ -131,19 +135,20 @@ export const transfersRepository = {
 
         return {
           ...transfer,
-          fromAccountName: fromAccount?.name ?? "Unknown source account",
-          toAccountName: toAccount?.name ?? "Unknown destination account",
-          fromAccountCurrencyCode: settings.currencyCode,
-          toAccountCurrencyCode: settings.currencyCode
+          fromAccountName: fromAccount?.name ?? "Unknown Account",
+          toAccountName: toAccount?.name ?? "Unknown Account",
+          currencyCode: settings.currencyCode,
+          fromAccountCurrencyCode: fromAccount?.currencyCode ?? settings.currencyCode,
+          toAccountCurrencyCode: toAccount?.currencyCode ?? settings.currencyCode
         };
       })
       .filter((transfer) => {
-        const query = filters.query.trim().toLowerCase();
         const matchesQuery =
-          query.length === 0 ||
-          transfer.description.toLowerCase().includes(query) ||
-          transfer.fromAccountName.toLowerCase().includes(query) ||
-          transfer.toAccountName.toLowerCase().includes(query);
+          filters.query.length === 0 ||
+          transfer.description.toLowerCase().includes(filters.query.toLowerCase()) ||
+          transfer.fromAccountName.toLowerCase().includes(filters.query.toLowerCase()) ||
+          transfer.toAccountName.toLowerCase().includes(filters.query.toLowerCase());
+
         const matchesAccount =
           filters.accountId === "all" ||
           transfer.fromAccountId === filters.accountId ||
@@ -183,17 +188,40 @@ export const transfersRepository = {
       transferDate: input.transferDate,
       userId: input.userId ?? null,
       remoteId: null,
-      syncStatus: "pending",
+      syncStatus: "synced",
       syncError: null,
-      lastSyncedAt: null,
+      lastSyncedAt: timestamp,
       createdAt: timestamp,
       updatedAt: timestamp,
       deletedAt: null
     };
 
+    if (supabase) {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const userId = input.userId || sessionData?.session?.user?.id;
+      if (userId) {
+        transfer.userId = userId;
+        const { error } = await supabase.from("transfers").insert({
+          id: transfer.id,
+          user_id: userId,
+          from_account_id: transfer.fromAccountId,
+          to_account_id: transfer.toAccountId,
+          amount_minor: Math.round(transfer.amount * 100),
+          source_fee_minor: Math.round(transfer.sourceFee * 100),
+          destination_fee_minor: Math.round(transfer.destinationFee * 100),
+          currency_code: "XAF",
+          description: transfer.description,
+          transfer_date: transfer.transferDate,
+          updated_at: timestamp
+        });
+        if (error) {
+          console.error("[Direct DB] Failed to create transfer in Supabase:", error);
+          throw error;
+        }
+      }
+    }
+
     await transfersTable.add(transfer);
-    await syncRepository.enqueue("transfers", transfer.id, "create", JSON.stringify(transfer));
-    await syncEngine.pushEntityImmediate("transfers", transfer.id, "create");
     return transfer;
   },
 
@@ -210,6 +238,7 @@ export const transfersRepository = {
 
     const { sourceFee, destinationFee } = await validateAndNormalize(input, id);
 
+    const timestamp = nowIso();
     const next: TransferRecord = {
       ...current,
       fromAccountId: input.fromAccountId,
@@ -220,14 +249,38 @@ export const transfersRepository = {
       destinationFee,
       description: input.description?.trim() ?? "",
       transferDate: input.transferDate,
-      syncStatus: "pending",
+      syncStatus: "synced",
       syncError: null,
-      updatedAt: nowIso()
+      updatedAt: timestamp
     };
 
+    if (supabase) {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const userId = next.userId || sessionData?.session?.user?.id;
+      if (userId) {
+        const { error } = await supabase
+          .from("transfers")
+          .update({
+            from_account_id: next.fromAccountId,
+            to_account_id: next.toAccountId,
+            amount_minor: Math.round(next.amount * 100),
+            source_fee_minor: Math.round(next.sourceFee * 100),
+            destination_fee_minor: Math.round(next.destinationFee * 100),
+            description: next.description,
+            transfer_date: next.transferDate,
+            updated_at: timestamp
+          })
+          .eq("id", id)
+          .eq("user_id", userId);
+
+        if (error) {
+          console.error("[Direct DB] Failed to update transfer in Supabase:", error);
+          throw error;
+        }
+      }
+    }
+
     await transfersTable.put(next);
-    await syncRepository.enqueue("transfers", next.id, "update", JSON.stringify(next));
-    await syncEngine.pushEntityImmediate("transfers", next.id, "update");
     return next;
   },
 
@@ -242,17 +295,25 @@ export const transfersRepository = {
       return;
     }
 
-    const next: TransferRecord = {
-      ...current,
-      deletedAt: nowIso(),
-      syncStatus: "pending",
-      syncError: null,
-      updatedAt: nowIso()
-    };
+    const timestamp = nowIso();
+    if (supabase) {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const userId = current.userId || sessionData?.session?.user?.id;
+      if (userId) {
+        const { error } = await supabase
+          .from("transfers")
+          .update({ deleted_at: timestamp, updated_at: timestamp })
+          .eq("id", id)
+          .eq("user_id", userId);
 
-    await transfersTable.put(next);
-    await syncRepository.enqueue("transfers", next.id, "delete", JSON.stringify(next));
-    await syncEngine.pushEntityImmediate("transfers", next.id, "delete");
+        if (error) {
+          console.error("[Direct DB] Failed to soft-delete transfer in Supabase:", error);
+          throw error;
+        }
+      }
+    }
+
+    await transfersTable.update(id, { deletedAt: timestamp, updatedAt: timestamp });
   },
 
   async stampOwnership(userId: string) {
@@ -269,18 +330,11 @@ export const transfersRepository = {
 
     await Promise.all(
       unclaimed.map((record) =>
-        transfersTable.put({
-          ...record,
+        transfersTable.update(record.id, {
           userId,
-          syncStatus: "pending",
-          syncError: null,
           updatedAt: nowIso()
         })
       )
-    );
-
-    await Promise.all(
-      unclaimed.map((record) => syncRepository.enqueue("transfers", record.id, "update"))
     );
   }
 };

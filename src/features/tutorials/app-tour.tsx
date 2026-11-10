@@ -6,28 +6,25 @@ import { useUiStore } from "@/store/ui-store";
 
 const TOUR_ID = "app-tour";
 
-// Body-anchored steps keep the tour robust across the desktop sidebar and the
-// mobile bottom bar. Mirrors the Flutter app's guided coach-mark tour and records
-// completion in AppSettings.tutorialCompletedIds.
 const STEPS: Step[] = [
   {
     target: "body",
     placement: "center",
     disableBeacon: true,
     title: "Welcome to Moniilog",
-    content: "A quick tour of how your local-first ledger works on the web."
+    content: "A quick tour of your financial ledger on the web."
   },
   {
     target: "body",
     placement: "center",
     title: "Dashboard",
-    content: "See your balance, income, expenses, accounts, and recent activity at a glance."
+    content: "See your live balance, income, expenses, accounts, and recent activity at a glance."
   },
   {
     target: "body",
     placement: "center",
-    title: "Add & transfer",
-    content: "Use Add to record income or expenses, and open Transfer to move money between accounts."
+    title: "Add & Transfer",
+    content: "Record income or expenses with Add, and move money between accounts with Transfer."
   },
   {
     target: "body",
@@ -39,7 +36,7 @@ const STEPS: Step[] = [
     target: "body",
     placement: "center",
     title: "Settings",
-    content: "Change currency, language, theme, manage categories, and back up your data any time."
+    content: "Manage accounts, categories, currencies, security, and export statements anytime."
   }
 ];
 
@@ -48,18 +45,22 @@ export function AppTour() {
   const settings = useLiveQuery(() => settingsRepository.getSettings(), []);
   const [run, setRun] = useState(false);
 
-  // Auto-start once for a user who has never completed the tour.
+  // Auto-start ONLY for a brand-new user who has never completed or dismissed the tour.
   useEffect(() => {
+    if (!settings) return;
+
     const isCompleted =
       localStorage.getItem("moniilog_tour_completed") === "true" ||
-      Boolean(settings?.tutorialCompletedIds?.includes(TOUR_ID));
+      Boolean(settings.tutorialCompletedIds?.includes(TOUR_ID)) ||
+      Boolean(settings.tutorialCompletedIds?.includes("dashboard")) ||
+      Boolean(settings.onboardingComplete);
 
-    if (settings && !isCompleted) {
+    if (!isCompleted) {
       setRun(true);
     }
   }, [settings]);
 
-  // Replay when triggered from Settings.
+  // Replay when explicitly triggered by the user from Settings.
   useEffect(() => {
     if (tourNonce > 0) {
       setRun(true);
@@ -68,9 +69,11 @@ export function AppTour() {
 
   function handleCallback(data: CallBackProps) {
     const finished: string[] = [STATUS.FINISHED, STATUS.SKIPPED];
-    if (finished.includes(data.status)) {
+    if (finished.includes(data.status) || data.action === "close") {
       setRun(false);
-      localStorage.setItem("moniilog_tour_completed", "true");
+      try {
+        localStorage.setItem("moniilog_tour_completed", "true");
+      } catch {}
       void settingsRepository.markTutorialComplete(TOUR_ID);
     }
   }
