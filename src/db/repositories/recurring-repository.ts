@@ -1,5 +1,6 @@
-import { appDb } from "@/db/dexie";
 import { supabase } from "@/lib/supabase-client";
+import { getCurrentUserId } from "@/lib/current-user";
+import { notifyDatabaseChange } from "@/lib/live-query";
 import type { RecurringFrequency, RecurringTransaction, TransactionType } from "@/types";
 import { nowIso } from "@/utils/date-utils";
 
@@ -15,14 +16,44 @@ function generateUuid(): string {
 }
 
 export const recurringRepository = {
-  async listActive(userId?: string): Promise<RecurringTransaction[]> {
-    return appDb.recurringTransactions
-      .filter((r) => !r.deletedAt && (!userId || !r.userId || r.userId === userId))
-      .toArray();
+  async listActive(userIdOverride?: string): Promise<RecurringTransaction[]> {
+    const userId = await getCurrentUserId(userIdOverride);
+    if (!userId || !supabase) return [];
+
+    const { data, error } = await supabase
+      .from("recurring_transactions")
+      .select("*")
+      .eq("user_id", userId);
+
+    if (error) {
+      console.error("[recurringRepository.listActive] Supabase error:", error);
+      return [];
+    }
+
+    return (data ?? []).map((r) => ({
+      id: r.id,
+      userId: r.user_id,
+      accountId: r.account_id,
+      categoryId: r.category_id,
+      type: r.type as TransactionType,
+      amount: Number(r.amount_minor || 0) / 100,
+      description: r.description || "",
+      frequency: r.frequency as RecurringFrequency,
+      nextOccurrence: r.next_occurrence,
+      isActive: r.is_active ?? true,
+      createdAt: r.created_at || nowIso(),
+      updatedAt: r.updated_at || nowIso(),
+      deletedAt: null,
+      remoteId: r.id,
+      syncStatus: "synced",
+      syncError: null,
+      lastSyncedAt: nowIso()
+    }));
   },
 
   async get(id: string): Promise<RecurringTransaction | undefined> {
-    return appDb.recurringTransactions.get(id);
+    const list = await this.listActive();
+    return list.find((r) => r.id === id);
   },
 
   async upsert(input: {
@@ -37,44 +68,39 @@ export const recurringRepository = {
     isActive?: boolean;
     userId?: string | null;
   }): Promise<RecurringTransaction> {
+    const userId = await getCurrentUserId(input.userId);
+    if (!userId || !supabase) {
+      throw new Error("Please sign in to configure recurring rules.");
+    }
+
     const timestamp = nowIso();
     const recurringId = input.id ?? generateUuid();
+    const frequency = input.frequency ?? "monthly";
+    const nextOccurrence = input.nextOccurrence ?? timestamp;
+    const isActive = input.isActive ?? true;
 
-    let existing: RecurringTransaction | undefined;
-    if (input.id) {
-      existing = await appDb.recurringTransactions.get(input.id);
+    const { error } = await supabase.from("recurring_transactions").upsert({
+      id: recurringId,
+      user_id: userId,
+      account_id: input.accountId,
+      category_id: input.categoryId || null,
+      type: input.type,
+      amount_minor: Math.round(input.amount * 100),
+      description: input.description,
+      frequency,
+      next_occurrence: nextOccurrence,
+      is_active: isActive,
+      updated_at: timestamp
+    });
+
+    if (error) {
+      console.error("[Direct DB] Failed to upsert recurring transaction:", error);
+      throw error;
     }
 
-    let currentUserId = input.userId ?? existing?.userId ?? null;
-    const frequency = input.frequency ?? existing?.frequency ?? "monthly";
-    const nextOccurrence = input.nextOccurrence ?? existing?.nextOccurrence ?? timestamp;
-    const isActive = input.isActive ?? existing?.isActive ?? true;
+    notifyDatabaseChange();
 
-    if (supabase) {
-      try {
-        const { data: sessionData } = await supabase.auth.getSession();
-        currentUserId = currentUserId || sessionData?.session?.user?.id || null;
-        if (currentUserId) {
-          await supabase.from("recurring_transactions").upsert({
-            id: recurringId,
-            user_id: currentUserId,
-            account_id: input.accountId,
-            category_id: input.categoryId || null,
-            type: input.type,
-            amount_minor: Math.round(input.amount * 100),
-            description: input.description,
-            frequency,
-            next_occurrence: nextOccurrence,
-            is_active: isActive,
-            updated_at: timestamp
-          });
-        }
-      } catch (e) {
-        console.error("[Direct DB] Failed to upsert recurring transaction:", e);
-      }
-    }
-
-    const record: RecurringTransaction = {
+    return {
       id: recurringId,
       accountId: input.accountId,
       categoryId: input.categoryId ?? null,
@@ -84,60 +110,46 @@ export const recurringRepository = {
       frequency,
       nextOccurrence,
       isActive,
-      userId: currentUserId,
+      userId,
       remoteId: recurringId,
       syncStatus: "synced",
       syncError: null,
       lastSyncedAt: timestamp,
-      createdAt: existing?.createdAt ?? timestamp,
+      createdAt: timestamp,
       updatedAt: timestamp,
       deletedAt: null
     };
-
-    await appDb.recurringTransactions.put(record);
-    return record;
   },
 
   async toggleActive(id: string, isActive: boolean): Promise<void> {
-    const existing = await appDb.recurringTransactions.get(id);
-    if (!existing) return;
+    const userId = await getCurrentUserId();
+    if (!userId || !supabase) return;
 
     const timestamp = nowIso();
-    if (supabase) {
-      try {
-        const { data: sessionData } = await supabase.auth.getSession();
-        const userId = existing.userId || sessionData?.session?.user?.id;
-        if (userId) {
-          await supabase
-            .from("recurring_transactions")
-            .update({ is_active: isActive, updated_at: timestamp })
-            .eq("id", id)
-            .eq("user_id", userId);
-        }
-      } catch (e) {
-        console.error("[Direct DB] Failed to toggle recurring active:", e);
-      }
+    const { error } = await supabase
+      .from("recurring_transactions")
+      .update({ is_active: isActive, updated_at: timestamp })
+      .eq("id", id)
+      .eq("user_id", userId);
+
+    if (error) {
+      console.error("[Direct DB] Failed to toggle recurring active:", error);
+      throw error;
     }
 
-    await appDb.recurringTransactions.update(id, { isActive, updatedAt: timestamp });
+    notifyDatabaseChange();
   },
 
   async delete(id: string): Promise<void> {
-    const existing = await appDb.recurringTransactions.get(id);
-    if (!existing) return;
+    const userId = await getCurrentUserId();
+    if (!userId || !supabase) return;
 
-    if (supabase) {
-      try {
-        const { data: sessionData } = await supabase.auth.getSession();
-        const userId = existing.userId || sessionData?.session?.user?.id;
-        if (userId) {
-          await supabase.from("recurring_transactions").delete().eq("id", id).eq("user_id", userId);
-        }
-      } catch (e) {
-        console.error("[Direct DB] Failed to delete recurring transaction:", e);
-      }
+    const { error } = await supabase.from("recurring_transactions").delete().eq("id", id).eq("user_id", userId);
+    if (error) {
+      console.error("[Direct DB] Failed to delete recurring transaction:", error);
+      throw error;
     }
 
-    await appDb.recurringTransactions.delete(id);
+    notifyDatabaseChange();
   }
 };

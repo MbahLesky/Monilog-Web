@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useLiveQuery } from "dexie-react-hooks";
+import { useLiveQuery } from "@/lib/live-query";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import {

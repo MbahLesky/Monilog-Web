@@ -1,5 +1,6 @@
-import { appDb } from "@/db/dexie";
 import { supabase } from "@/lib/supabase-client";
+import { getCurrentUserId } from "@/lib/current-user";
+import { notifyDatabaseChange } from "@/lib/live-query";
 import type { Budget, BudgetPeriod, TransactionRecord } from "@/types";
 import { nowIso } from "@/utils/date-utils";
 
@@ -23,14 +24,39 @@ export interface BudgetProgress {
 }
 
 export const budgetsRepository = {
-  async listActive(userId?: string): Promise<Budget[]> {
-    return appDb.budgets
-      .filter((b) => !b.deletedAt && (!userId || !b.userId || b.userId === userId))
-      .toArray();
+  async listActive(userIdOverride?: string): Promise<Budget[]> {
+    const userId = await getCurrentUserId(userIdOverride);
+    if (!userId || !supabase) return [];
+
+    const { data, error } = await supabase
+      .from("budgets")
+      .select("*")
+      .eq("user_id", userId);
+
+    if (error) {
+      console.error("[budgetsRepository.listActive] Supabase error:", error);
+      return [];
+    }
+
+    return (data ?? []).map((b) => ({
+      id: b.id,
+      userId: b.user_id,
+      categoryId: b.category_id,
+      amount: Number(b.amount_minor || 0) / 100,
+      period: b.period as BudgetPeriod,
+      createdAt: b.created_at || nowIso(),
+      updatedAt: b.updated_at || nowIso(),
+      deletedAt: null,
+      remoteId: b.id,
+      syncStatus: "synced",
+      syncError: null,
+      lastSyncedAt: nowIso()
+    }));
   },
 
   async get(id: string): Promise<Budget | undefined> {
-    return appDb.budgets.get(id);
+    const list = await this.listActive();
+    return list.find((b) => b.id === id);
   },
 
   async upsertBudget(input: {
@@ -40,76 +66,58 @@ export const budgetsRepository = {
     period?: BudgetPeriod;
     userId?: string | null;
   }): Promise<Budget> {
+    const userId = await getCurrentUserId(input.userId);
+    if (!userId || !supabase) {
+      throw new Error("Please sign in to configure a budget.");
+    }
+
     const timestamp = nowIso();
     const period = input.period ?? "monthly";
+    const budgetId = input.id ?? generateUuid();
 
-    let existing: Budget | undefined;
-    if (input.id) {
-      existing = await appDb.budgets.get(input.id);
-    } else {
-      existing = await appDb.budgets
-        .filter((b) => !b.deletedAt && b.categoryId === input.categoryId && b.period === period)
-        .first();
+    const { error } = await supabase.from("budgets").upsert({
+      id: budgetId,
+      user_id: userId,
+      category_id: input.categoryId,
+      amount_minor: Math.round(input.amount * 100),
+      period,
+      updated_at: timestamp
+    });
+
+    if (error) {
+      console.error("[Direct DB] Failed to upsert budget:", error);
+      throw error;
     }
 
-    const budgetId = existing?.id ?? input.id ?? generateUuid();
-    let currentUserId = input.userId ?? existing?.userId ?? null;
+    notifyDatabaseChange();
 
-    if (supabase) {
-      try {
-        const { data: sessionData } = await supabase.auth.getSession();
-        currentUserId = currentUserId || sessionData?.session?.user?.id || null;
-        if (currentUserId) {
-          await supabase.from("budgets").upsert({
-            id: budgetId,
-            user_id: currentUserId,
-            category_id: input.categoryId,
-            amount_minor: Math.round(input.amount * 100),
-            period,
-            updated_at: timestamp
-          });
-        }
-      } catch (e) {
-        console.error("[Direct DB] Failed to upsert budget:", e);
-      }
-    }
-
-    const record: Budget = {
+    return {
       id: budgetId,
       categoryId: input.categoryId,
       amount: input.amount,
       period,
-      userId: currentUserId,
+      userId,
       remoteId: budgetId,
       syncStatus: "synced",
       syncError: null,
       lastSyncedAt: timestamp,
-      createdAt: existing?.createdAt ?? timestamp,
+      createdAt: timestamp,
       updatedAt: timestamp,
       deletedAt: null
     };
-
-    await appDb.budgets.put(record);
-    return record;
   },
 
   async deleteBudget(id: string): Promise<void> {
-    const existing = await appDb.budgets.get(id);
-    if (!existing) return;
+    const userId = await getCurrentUserId();
+    if (!userId || !supabase) return;
 
-    if (supabase) {
-      try {
-        const { data: sessionData } = await supabase.auth.getSession();
-        const userId = existing.userId || sessionData?.session?.user?.id;
-        if (userId) {
-          await supabase.from("budgets").delete().eq("id", id).eq("user_id", userId);
-        }
-      } catch (e) {
-        console.error("[Direct DB] Failed to delete budget:", e);
-      }
+    const { error } = await supabase.from("budgets").delete().eq("id", id).eq("user_id", userId);
+    if (error) {
+      console.error("[Direct DB] Failed to delete budget:", error);
+      throw error;
     }
 
-    await appDb.budgets.delete(id);
+    notifyDatabaseChange();
   },
 
   calculateProgress(budgets: Budget[], transactions: TransactionRecord[]): BudgetProgress[] {

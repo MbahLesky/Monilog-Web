@@ -5,6 +5,7 @@ import { initializeAnalytics } from "@/services/telemetry-service";
 import { supabaseAuthService } from "@/services/supabase-auth-service";
 import { isSupabaseConfigured } from "@/lib/env";
 import { useLanguageSync } from "@/hooks/use-language-sync";
+import { initGlobalRealtime } from "@/lib/live-query";
 
 export function AppBootstrap() {
   const bootstrap = useAuthStore((state) => state.bootstrap);
@@ -18,9 +19,9 @@ export function AppBootstrap() {
 
   useEffect(() => {
     if (!userId || !isSupabaseConfigured) return;
-    const cleanup = initRealtime(userId);
-    return cleanup;
-  }, [initRealtime, userId]);
+    const cleanupRealtime = initGlobalRealtime(userId);
+    return cleanupRealtime;
+  }, [userId]);
 
   useEffect(() => {
     void bootstrap();

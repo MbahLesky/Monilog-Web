@@ -27,7 +27,7 @@ export function AddTransactionPage() {
           <CardHeader>
             <CardTitle>Manual entry</CardTitle>
             <CardDescription>
-              Amount, type, category, account, note, and date are validated before Moniilog saves locally.
+              Amount, type, category, account, note, and date are validated before saving to the database.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -37,16 +37,16 @@ export function AddTransactionPage() {
 
         <Card className="bg-primary text-primary-foreground">
           <CardHeader>
-            <CardTitle className="text-primary-foreground">How this save works</CardTitle>
+            <CardTitle className="text-primary-foreground">Direct Cloud Database Save</CardTitle>
             <CardDescription className="text-primary-foreground/84">
-              The UI writes into IndexedDB first so transaction entry stays fast and available offline.
+              Moniilog writes directly to your cloud database so all your devices stay in sync.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3 text-sm leading-6 text-primary-foreground/88">
             <p>1. The form validates the amount, type, category, account, and date.</p>
-            <p>2. The transaction is stored locally as the ledger source of truth.</p>
-            <p>3. A sync outbox entry is queued for the authenticated browser session.</p>
-            <p>4. The dashboard and analytics update from the stored local data right away.</p>
+            <p>2. The transaction is written directly to your Moniilog Cloud Database.</p>
+            <p>3. Account balances update immediately across all your connected devices.</p>
+            <p>4. The dashboard, history, and analytics reflect the live database records instantly.</p>
           </CardContent>
         </Card>
       </div>

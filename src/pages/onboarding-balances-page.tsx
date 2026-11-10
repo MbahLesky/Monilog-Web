@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useFieldArray, useForm } from "react-hook-form";
-import { useLiveQuery } from "dexie-react-hooks";
+import { useLiveQuery } from "@/lib/live-query";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { accountsRepository } from "@/db/repositories/accounts-repository";

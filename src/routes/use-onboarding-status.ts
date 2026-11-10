@@ -1,4 +1,4 @@
-import { useLiveQuery } from "dexie-react-hooks";
+import { useLiveQuery } from "@/lib/live-query";
 import { settingsRepository } from "@/db/repositories/settings-repository";
 import { useAuthStore } from "@/store/auth-store";
 

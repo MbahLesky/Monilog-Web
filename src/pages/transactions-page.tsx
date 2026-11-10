@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useLiveQuery } from "dexie-react-hooks";
+import { useLiveQuery } from "@/lib/live-query";
 import { ArrowRightLeft, Filter, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { EmptyState } from "@/components/data-display/empty-state";
 import {

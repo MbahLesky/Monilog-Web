@@ -1,5 +1,5 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useLiveQuery } from "dexie-react-hooks";
+import { useLiveQuery } from "@/lib/live-query";
 import { useEffect, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
@@ -103,7 +103,7 @@ export function TransferForm({ initialValue, userId, submitLabel = "Save transfe
         toast.success("Transfer updated.");
       } else {
         await transfersRepository.createTransfer({ ...values, userId });
-        toast.success("Transfer saved locally.");
+        toast.success("Transfer saved to database.");
         // Fee presence is useful signal; the amounts themselves are not sent.
         trackEvent(ANALYTICS_EVENTS.transferCreated, {
           has_source_fee: Number(values.sourceFee) > 0,

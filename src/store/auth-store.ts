@@ -6,6 +6,7 @@ import { isSupabaseConfigured } from "@/lib/env";
 import { identifyUser, trackEvent } from "@/services/telemetry-service";
 import { supabaseAuthService } from "@/services/supabase-auth-service";
 import { useSyncStore } from "@/store/sync-store";
+import { notifyDatabaseChange } from "@/lib/live-query";
 import type { Profile } from "@/types";
 import { settingsRepository } from "@/db/repositories/settings-repository";
 import { syncRepository } from "@/db/repositories/sync-repository";
@@ -159,6 +160,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       profile: profileFromUser(user),
       error: null
     });
+    notifyDatabaseChange();
   },
 
   signIn: async (email, password) => {
@@ -236,6 +238,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       error: null,
       notice: null
     });
+    notifyDatabaseChange();
   },
 
   saveProfile: async (updates) => {

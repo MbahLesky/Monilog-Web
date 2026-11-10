@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useLiveQuery } from "dexie-react-hooks";
+import { useLiveQuery } from "@/lib/live-query";
 import Joyride, { STATUS, type CallBackProps, type Step } from "react-joyride";
 import { settingsRepository } from "@/db/repositories/settings-repository";
 import { useUiStore } from "@/store/ui-store";

@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { useLiveQuery } from "dexie-react-hooks";
+import { useLiveQuery } from "@/lib/live-query";
 import i18n from "@/i18n";
 import { settingsRepository } from "@/db/repositories/settings-repository";
 

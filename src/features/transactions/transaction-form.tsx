@@ -1,5 +1,5 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useLiveQuery } from "dexie-react-hooks";
+import { useLiveQuery } from "@/lib/live-query";
 import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
@@ -82,7 +82,7 @@ export function TransactionForm({
           ...values,
           userId
         });
-        toast.success("Transaction saved locally.");
+        toast.success("Transaction saved to database.");
         // Amount is deliberately omitted — event parameters must not carry a
         // user's actual financial figures.
         trackEvent(ANALYTICS_EVENTS.transactionAdded, {

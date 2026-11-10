@@ -1,8 +1,7 @@
 import { format, parseISO, startOfMonth } from "date-fns";
-import { getOptionalTable } from "@/db/dexie";
 import { accountsRepository } from "@/db/repositories/accounts-repository";
 import { transactionsRepository } from "@/db/repositories/transactions-repository";
-import type { TransferRecord } from "@/types";
+import { transfersRepository } from "@/db/repositories/transfers-repository";
 
 export interface AnalyticsFilterOptions {
   startDate?: string | null; // YYYY-MM-DD
@@ -13,10 +12,9 @@ export interface AnalyticsFilterOptions {
 
 export const analyticsService = {
   async getSnapshots(filters: AnalyticsFilterOptions = {}) {
-    const transfersTable = getOptionalTable<TransferRecord>("transfers");
     const [allTransactions, allTransfers, accountsWithBalances] = await Promise.all([
       transactionsRepository.listWithRelations(),
-      transfersTable ? transfersTable.toArray() : Promise.resolve([]),
+      transfersRepository.listActive(),
       accountsRepository.listWithBalances()
     ]);
 

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useLiveQuery } from "dexie-react-hooks";
+import { useLiveQuery } from "@/lib/live-query";
 import { Download, FileSpreadsheet, FileText } from "lucide-react";
 import { toast } from "sonner";
 import { accountsRepository } from "@/db/repositories/accounts-repository";

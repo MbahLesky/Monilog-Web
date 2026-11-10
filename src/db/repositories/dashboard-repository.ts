@@ -1,8 +1,7 @@
 import { isSameDay, parseISO } from "date-fns";
-import { getOptionalTable } from "@/db/dexie";
 import { accountsRepository } from "@/db/repositories/accounts-repository";
 import { transactionsRepository } from "@/db/repositories/transactions-repository";
-import type { TransferRecord } from "@/types";
+import { transfersRepository } from "@/db/repositories/transfers-repository";
 
 export interface DashboardSnapshot {
   currentBalance: number;
@@ -15,13 +14,11 @@ export interface DashboardSnapshot {
 
 export const dashboardRepository = {
   async getSnapshot(): Promise<DashboardSnapshot> {
-    const transfersTable = getOptionalTable<TransferRecord>("transfers");
-    const [accountSummaries, recentTransactions, transfers] = await Promise.all([
+    const [accountSummaries, recentTransactions, activeTransfers] = await Promise.all([
       accountsRepository.listWithBalances(),
       transactionsRepository.listWithRelations(),
-      transfersTable ? transfersTable.toArray() : Promise.resolve([])
+      transfersRepository.listActive()
     ]);
-    const activeTransfers = transfers.filter((transfer) => !transfer.deletedAt);
 
     const currentBalance = accountSummaries.reduce((sum, account) => sum + account.currentBalance, 0);
     const totalIncome = recentTransactions
