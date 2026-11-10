@@ -24,6 +24,8 @@
 - ~~[x] **WEB-019:** Unify Theme & Color Palette (`#08D2B5` Mint Teal, `#08867F` Deep Teal, `#020617` / `#0F172A` Dark Slate) with Landing Page (`v1.3.1` Build 7)~~
 - ~~[x] **WEB-020:** Scale UI Down to Sleek ~80% Sizing (`13px` root, compact AppShell, PageShell, Cards, Buttons, Inputs) & Eliminate Settings Menu Item Overflow~~
 - ~~[x] **WEB-021:** Fix Glitching "Last sync update" Timestamp, Skip Onboarding for Existing Signed-In Accounts, & Add "Continue without an account" Option~~
+- ~~[x] **WEB-022:** Remove Disturbing Sync Banner & Read/Write Directly to/from Supabase Database (`v1.3.2` Build 8)~~
+- ~~[x] **WEB-023:** Rename "Bank Statement" to "Financial Statement" Across Export & Settings Pages & Align Cross-Platform Balance Parity~~
 
 ---
 

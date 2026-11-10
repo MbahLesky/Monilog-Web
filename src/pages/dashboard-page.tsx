@@ -14,25 +14,18 @@ import { BudgetManager } from "@/components/budget/budget-manager";
 import { RecurringManager } from "@/components/recurring/recurring-manager";
 import { EmptyState } from "@/components/data-display/empty-state";
 import { MetricCard } from "@/components/data-display/metric-card";
-import { SyncBanner } from "@/components/data-display/sync-banner";
 import { PageShell } from "@/components/layout/page-shell";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { dashboardRepository } from "@/db/repositories/dashboard-repository";
 import { settingsRepository } from "@/db/repositories/settings-repository";
-import { useNetworkStatus } from "@/hooks/use-network-status";
-import { useSyncStatus } from "@/hooks/use-sync-status";
 import { ROUTES } from "@/routes/route-constants";
-import { useAuthStore } from "@/store/auth-store";
 import { formatCurrency } from "@/utils/formatting";
 
 export function DashboardPage() {
   const navigate = useNavigate();
   const dashboard = useLiveQuery(() => dashboardRepository.getSnapshot(), []);
   const settings = useLiveQuery(() => settingsRepository.getSettings(), []);
-  const syncState = useSyncStatus();
-  const isOnline = useNetworkStatus();
-  const userId = useAuthStore((state) => state.user?.id);
   const selectedCurrencyCode = settings?.currencyCode ?? "XAF";
 
   const hasTransactions = (dashboard?.recentTransactions.length ?? 0) > 0;
@@ -40,7 +33,7 @@ export function DashboardPage() {
   return (
     <PageShell
       title="Dashboard"
-      description="See your current balance, quick totals, accounts, and the latest activity without waiting on a remote round trip."
+      description="See your current balance, quick totals, accounts, and the latest activity."
       action={
         <Button onClick={() => navigate(ROUTES.addTransaction)}>
           <Plus className="size-4" />
@@ -48,15 +41,6 @@ export function DashboardPage() {
         </Button>
       }
     >
-      <SyncBanner
-        pending={syncState.pending}
-        failed={syncState.failed}
-        processing={syncState.processing}
-        lastSyncedAt={syncState.lastSyncedAt}
-        isOnline={isOnline}
-        onRetry={userId ? () => void syncState.runNow(userId) : undefined}
-      />
-
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <MetricCard
           label="Current balance"
@@ -69,7 +53,7 @@ export function DashboardPage() {
           value={formatCurrency(dashboard?.totalIncome ?? 0, selectedCurrencyCode)}
           icon={TrendingUp}
           tone="secondary"
-          trendLabel="Stored locally first"
+          trendLabel="Income ledger total"
         />
         <MetricCard
           label="Total expenses"

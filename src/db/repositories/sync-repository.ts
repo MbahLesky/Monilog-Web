@@ -44,6 +44,9 @@ export const syncRepository = {
         status: "pending",
         updatedAt: timestamp
       });
+      void import("@/services/sync-engine").then(({ syncEngine }) =>
+        syncEngine.pushEntityImmediate(entityName, entityId, operation, existing.id)
+      );
       return existing.id;
     }
 
@@ -62,6 +65,9 @@ export const syncRepository = {
     };
 
     await appDb.syncOperations.add(record);
+    void import("@/services/sync-engine").then(({ syncEngine }) =>
+      syncEngine.pushEntityImmediate(entityName, entityId, operation, record.id)
+    );
     return record.id;
   },
 

@@ -8,15 +8,12 @@ import type {
   Category,
   NotificationPreference,
   RecurringTransaction,
-  SyncableEntity,
   SyncEntityName,
   SyncOperationRecord,
   TransferRecord,
   TransactionRecord
 } from "@/types";
 import { nowIso } from "@/utils/date-utils";
-
-const CHECKPOINT_PREFIX = "moniilog-supabase-checkpoint";
 
 type SyncableRecord =
   | Account
@@ -33,18 +30,6 @@ function assertSupabase() {
     throw new Error("Supabase is not configured.");
   }
   return supabase;
-}
-
-function getCheckpointKey(entityName: SyncEntityName, userId: string) {
-  return `${CHECKPOINT_PREFIX}:${userId}:${entityName}`;
-}
-
-function getCheckpoint(entityName: SyncEntityName, userId: string) {
-  return window.localStorage.getItem(getCheckpointKey(entityName, userId));
-}
-
-function setCheckpoint(entityName: SyncEntityName, userId: string, value: string) {
-  window.localStorage.setItem(getCheckpointKey(entityName, userId), value);
 }
 
 function getSyncTable(entityName: SyncEntityName) {
@@ -94,99 +79,116 @@ async function markLocalFailed(entityName: SyncEntityName, entityId: string, err
   });
 }
 
-async function pushOperation(operation: SyncOperationRecord, userId: string) {
+async function writeEntityToDatabase(
+  entityName: SyncEntityName,
+  entityId: string,
+  userId: string,
+  operationType?: string
+) {
   const client = assertSupabase();
-  const table = getSyncTable(operation.entityName);
-  const record = (await table.get(operation.entityId)) as SyncableRecord | undefined;
+  const table = getSyncTable(entityName);
+  const record = (await table.get(entityId)) as SyncableRecord | undefined;
 
   if (!record) {
-    await syncRepository.remove(operation.id);
+    if (operationType === "delete") {
+      if (entityName === "budgets") {
+        await client.from("budgets").delete().eq("id", entityId).eq("user_id", userId);
+      } else if (entityName === "recurringTransactions") {
+        await client.from("recurring_transactions").delete().eq("id", entityId).eq("user_id", userId);
+      }
+    }
     return;
   }
 
-  await syncRepository.markProcessing(operation.id);
-
-  try {
-    if (operation.entityName === "accounts") {
-      const a = record as Account;
-      const { error } = await client.from("accounts").upsert({
-        id: a.id,
-        user_id: userId,
-        preset_key: a.presetKey || null,
-        name: a.name,
-        type: a.type,
-        opening_balance_minor: Math.round((a.openingBalance || 0) * 100),
-        currency_code: a.currencyCode || "XAF",
-        is_default: a.isDefault ?? false,
-        display_order: a.displayOrder ?? 0,
-        balance_reset_at: a.balanceResetAt || null,
-        updated_at: a.updatedAt,
-        deleted_at: a.deletedAt || null
-      });
+  if (entityName === "accounts") {
+    const a = record as Account;
+    const { error } = await client.from("accounts").upsert({
+      id: a.id,
+      user_id: userId,
+      preset_key: a.presetKey || null,
+      name: a.name,
+      type: a.type,
+      opening_balance_minor: Math.round((a.openingBalance || 0) * 100),
+      currency_code: a.currencyCode || "XAF",
+      is_default: a.isDefault ?? false,
+      display_order: a.displayOrder ?? 0,
+      balance_reset_at: a.balanceResetAt || "1970-01-01T00:00:00.000Z",
+      updated_at: nowIso(),
+      deleted_at: a.deletedAt || null
+    });
+    if (error) throw error;
+  } else if (entityName === "categories") {
+    const c = record as Category;
+    const { error } = await client.from("categories").upsert({
+      id: c.id,
+      user_id: userId,
+      preset_key: c.presetKey || null,
+      name: c.name,
+      type: c.type,
+      icon_key: c.iconKey || null,
+      color_key: c.colorKey || null,
+      is_default: c.isDefault ?? false,
+      display_order: c.displayOrder ?? 0,
+      updated_at: nowIso(),
+      deleted_at: c.deletedAt || null
+    });
+    if (error) throw error;
+  } else if (entityName === "transactions") {
+    const t = record as TransactionRecord;
+    const { error } = await client.from("transactions").upsert({
+      id: t.id,
+      user_id: userId,
+      account_id: t.accountId,
+      category_id: t.categoryId || null,
+      type: t.type,
+      amount_minor: Math.round((t.amount || 0) * 100),
+      currency_code: t.currencyCode || "XAF",
+      description: t.description || "",
+      affects_account_balance: t.affectsAccountBalance ?? true,
+      transaction_date: t.transactionDate,
+      updated_at: nowIso(),
+      deleted_at: t.deletedAt || null
+    });
+    if (error) throw error;
+  } else if (entityName === "transfers") {
+    const tf = record as TransferRecord;
+    const { error } = await client.from("transfers").upsert({
+      id: tf.id,
+      user_id: userId,
+      from_account_id: tf.fromAccountId,
+      to_account_id: tf.toAccountId,
+      amount_minor: Math.round((tf.amount || 0) * 100),
+      source_fee_minor: Math.round((tf.sourceFee || 0) * 100),
+      destination_fee_minor: Math.round((tf.destinationFee || 0) * 100),
+      currency_code: tf.currencyCode || "XAF",
+      description: tf.description || "",
+      transfer_date: tf.transferDate,
+      updated_at: nowIso(),
+      deleted_at: tf.deletedAt || null
+    });
+    if (error) throw error;
+  } else if (entityName === "budgets") {
+    const b = record as Budget;
+    if (b.deletedAt || operationType === "delete") {
+      const { error } = await client.from("budgets").delete().eq("id", b.id).eq("user_id", userId);
       if (error) throw error;
-    } else if (operation.entityName === "categories") {
-      const c = record as Category;
-      const { error } = await client.from("categories").upsert({
-        id: c.id,
-        user_id: userId,
-        preset_key: c.presetKey || null,
-        name: c.name,
-        type: c.type,
-        icon_key: c.iconKey || null,
-        color_key: c.colorKey || null,
-        is_default: c.isDefault ?? false,
-        display_order: c.displayOrder ?? 0,
-        updated_at: c.updatedAt,
-        deleted_at: c.deletedAt || null
-      });
-      if (error) throw error;
-    } else if (operation.entityName === "transactions") {
-      const t = record as TransactionRecord;
-      const { error } = await client.from("transactions").upsert({
-        id: t.id,
-        user_id: userId,
-        account_id: t.accountId,
-        category_id: t.categoryId || null,
-        type: t.type,
-        amount_minor: Math.round((t.amount || 0) * 100),
-        currency_code: t.currencyCode || "XAF",
-        description: t.description || "",
-        affects_account_balance: t.affectsAccountBalance ?? true,
-        transaction_date: t.transactionDate,
-        updated_at: t.updatedAt,
-        deleted_at: t.deletedAt || null
-      });
-      if (error) throw error;
-    } else if (operation.entityName === "transfers") {
-      const tf = record as TransferRecord;
-      const { error } = await client.from("transfers").upsert({
-        id: tf.id,
-        user_id: userId,
-        from_account_id: tf.fromAccountId,
-        to_account_id: tf.toAccountId,
-        amount_minor: Math.round((tf.amount || 0) * 100),
-        source_fee_minor: Math.round((tf.sourceFee || 0) * 100),
-        destination_fee_minor: Math.round((tf.destinationFee || 0) * 100),
-        currency_code: tf.currencyCode || "XAF",
-        description: tf.description || "",
-        transfer_date: tf.transferDate,
-        updated_at: tf.updatedAt,
-        deleted_at: tf.deletedAt || null
-      });
-      if (error) throw error;
-    } else if (operation.entityName === "budgets") {
-      const b = record as Budget;
+    } else {
       const { error } = await client.from("budgets").upsert({
         id: b.id,
         user_id: userId,
         category_id: b.categoryId,
         amount_minor: Math.round((b.amount || 0) * 100),
         period: b.period,
-        updated_at: b.updatedAt
+        updated_at: nowIso()
       });
       if (error) throw error;
-    } else if (operation.entityName === "recurringTransactions") {
-      const r = record as RecurringTransaction;
+    }
+  } else if (entityName === "recurringTransactions") {
+    const r = record as RecurringTransaction;
+    if (r.deletedAt || operationType === "delete") {
+      const { error } = await client.from("recurring_transactions").delete().eq("id", r.id).eq("user_id", userId);
+      if (error) throw error;
+    } else {
       const { error } = await client.from("recurring_transactions").upsert({
         id: r.id,
         user_id: userId,
@@ -198,56 +200,67 @@ async function pushOperation(operation: SyncOperationRecord, userId: string) {
         frequency: r.frequency,
         next_occurrence: r.nextOccurrence,
         is_active: r.isActive,
-        updated_at: r.updatedAt
-      });
-      if (error) throw error;
-    } else if (operation.entityName === "settings") {
-      const s = record as AppSettings;
-      const tutorialIdsStr = Array.isArray(s.tutorialCompletedIds)
-        ? s.tutorialCompletedIds.join(",")
-        : String(s.tutorialCompletedIds || "");
-      const { error } = await client.from("profiles").upsert({
-        id: userId,
-        preferred_currency: s.currencyCode || "XAF",
-        preferred_language: s.language || "en",
-        theme_mode: s.themeMode || "system",
-        onboarding_completed: s.onboardingComplete ?? false,
-        tutorial_completed_ids: tutorialIdsStr,
-        updated_at: s.updatedAt
+        updated_at: nowIso()
       });
       if (error) throw error;
     }
+  } else if (entityName === "settings") {
+    const s = record as AppSettings;
+    const tutorialIdsStr = Array.isArray(s.tutorialCompletedIds)
+      ? s.tutorialCompletedIds.join(",")
+      : String(s.tutorialCompletedIds || "");
+    const { error } = await client.from("profiles").upsert({
+      id: userId,
+      preferred_currency: s.currencyCode || "XAF",
+      preferred_language: s.language || "en",
+      theme_mode: s.themeMode || "system",
+      onboarding_completed: s.onboardingComplete ?? true,
+      tutorial_completed_ids: tutorialIdsStr,
+      updated_at: nowIso()
+    });
+    if (error) throw error;
+  }
+
+  await markLocalSynced(entityName, entityId, record.id);
+}
+
+async function pushOperation(operation: SyncOperationRecord, userId: string) {
+  await syncRepository.markProcessing(operation.id);
+  try {
+    await writeEntityToDatabase(operation.entityName, operation.entityId, userId, operation.operation);
+    await syncRepository.remove(operation.id);
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Sync failed.";
+    const message = error instanceof Error ? error.message : "Database write failed.";
     await markLocalFailed(operation.entityName, operation.entityId, message);
     await syncRepository.markFailed(operation.id, message);
     throw new Error(message);
   }
-
-  await markLocalSynced(operation.entityName, operation.entityId, record.id);
-  await syncRepository.remove(operation.id);
 }
 
 async function pullTable(entityName: SyncEntityName, userId: string) {
   const client = assertSupabase();
   const table = getSyncTable(entityName);
-  const localCount = await (table as { count: () => Promise<number> }).count();
-  const checkpoint = localCount > 2 ? getCheckpoint(entityName, userId) : null;
-
-  let latestUpdatedAt: string | null = null;
+  const pendingOps = await syncRepository.listPending(200);
+  const pendingIds = new Set(
+    pendingOps.filter((op) => op.entityName === entityName).map((op) => op.entityId)
+  );
 
   if (entityName === "accounts") {
-    let q = client.from("accounts").select("*").eq("user_id", userId).order("updated_at", { ascending: true });
-    if (checkpoint) q = q.gt("updated_at", checkpoint);
-    const { data } = await q;
+    const { data, error } = await client
+      .from("accounts")
+      .select("*")
+      .eq("user_id", userId)
+      .order("display_order", { ascending: true });
+    if (error) return;
 
+    const remoteIds = new Set<string>();
     for (const row of data ?? []) {
       if (row.is_default && row.id !== "default-cash" && row.id !== "default-bank") {
-        const existingDefault = await table.get("default-cash");
-        if (existingDefault && String(row.name).toLowerCase() === "cash") {
-          continue;
-        }
+        continue;
       }
+      remoteIds.add(row.id);
+      if (pendingIds.has(row.id)) continue;
+
       const remoteRecord: Account = {
         id: row.id,
         userId: row.user_id,
@@ -258,7 +271,7 @@ async function pullTable(entityName: SyncEntityName, userId: string) {
         currencyCode: row.currency_code,
         isDefault: row.is_default,
         displayOrder: row.display_order,
-        balanceResetAt: row.balance_reset_at,
+        balanceResetAt: row.balance_reset_at || "1970-01-01T00:00:00.000Z",
         createdAt: row.created_at,
         updatedAt: row.updated_at,
         deletedAt: row.deleted_at,
@@ -266,18 +279,38 @@ async function pullTable(entityName: SyncEntityName, userId: string) {
         syncError: null,
         lastSyncedAt: nowIso()
       };
-      const local = (await table.get(remoteRecord.id)) as Account | undefined;
-      if (!local || !local.userId || remoteRecord.updatedAt > local.updatedAt) {
-        await table.put(remoteRecord as never);
+      await table.put(remoteRecord as never);
+    }
+
+    if (remoteIds.size === 0) {
+      const localAccounts = await appDb.accounts.toArray();
+      for (const local of localAccounts) {
+        if (!local.deletedAt) {
+          await writeEntityToDatabase("accounts", local.id, userId, "create");
+        }
       }
-      latestUpdatedAt = row.updated_at;
+      return;
+    }
+
+    const localAccounts = await appDb.accounts.toArray();
+    for (const local of localAccounts) {
+      if (!remoteIds.has(local.id) && !pendingIds.has(local.id)) {
+        await appDb.accounts.delete(local.id);
+      }
     }
   } else if (entityName === "categories") {
-    let q = client.from("categories").select("*").eq("user_id", userId).order("updated_at", { ascending: true });
-    if (checkpoint) q = q.gt("updated_at", checkpoint);
-    const { data } = await q;
+    const { data, error } = await client
+      .from("categories")
+      .select("*")
+      .eq("user_id", userId)
+      .order("updated_at", { ascending: true });
+    if (error) return;
 
+    let hasActiveRemote = false;
     for (const row of data ?? []) {
+      if (!row.deleted_at) hasActiveRemote = true;
+      if (pendingIds.has(row.id)) continue;
+
       const remoteRecord: Category = {
         id: row.id,
         userId: row.user_id,
@@ -295,18 +328,30 @@ async function pullTable(entityName: SyncEntityName, userId: string) {
         syncError: null,
         lastSyncedAt: nowIso()
       };
-      const local = (await table.get(remoteRecord.id)) as Category | undefined;
-      if (!local || !local.userId || remoteRecord.updatedAt > local.updatedAt) {
-        await table.put(remoteRecord as never);
+      await table.put(remoteRecord as never);
+    }
+
+    if (!hasActiveRemote) {
+      const localCategories = await appDb.categories.toArray();
+      for (const local of localCategories) {
+        if (!local.deletedAt) {
+          await writeEntityToDatabase("categories", local.id, userId, "create");
+        }
       }
-      latestUpdatedAt = row.updated_at;
     }
   } else if (entityName === "transactions") {
-    let q = client.from("transactions").select("*").eq("user_id", userId).order("updated_at", { ascending: true });
-    if (checkpoint) q = q.gt("updated_at", checkpoint);
-    const { data } = await q;
+    const { data, error } = await client
+      .from("transactions")
+      .select("*")
+      .eq("user_id", userId)
+      .order("transaction_date", { ascending: false });
+    if (error) return;
 
+    const remoteIds = new Set<string>();
     for (const row of data ?? []) {
+      remoteIds.add(row.id);
+      if (pendingIds.has(row.id)) continue;
+
       const remoteRecord: TransactionRecord = {
         id: row.id,
         userId: row.user_id,
@@ -316,7 +361,7 @@ async function pullTable(entityName: SyncEntityName, userId: string) {
         amount: Number(row.amount_minor || 0) / 100,
         currencyCode: row.currency_code,
         description: row.description,
-        affectsAccountBalance: row.affects_account_balance,
+        affectsAccountBalance: row.affects_account_balance ?? true,
         transactionDate: row.transaction_date,
         createdAt: row.created_at,
         updatedAt: row.updated_at,
@@ -325,18 +370,28 @@ async function pullTable(entityName: SyncEntityName, userId: string) {
         syncError: null,
         lastSyncedAt: nowIso()
       };
-      const local = (await table.get(remoteRecord.id)) as TransactionRecord | undefined;
-      if (!local || !local.userId || remoteRecord.updatedAt > local.updatedAt) {
-        await table.put(remoteRecord as never);
+      await table.put(remoteRecord as never);
+    }
+
+    const localTransactions = await appDb.transactions.toArray();
+    for (const local of localTransactions) {
+      if (!remoteIds.has(local.id) && !pendingIds.has(local.id)) {
+        await appDb.transactions.delete(local.id);
       }
-      latestUpdatedAt = row.updated_at;
     }
   } else if (entityName === "transfers") {
-    let q = client.from("transfers").select("*").eq("user_id", userId).order("updated_at", { ascending: true });
-    if (checkpoint) q = q.gt("updated_at", checkpoint);
-    const { data } = await q;
+    const { data, error } = await client
+      .from("transfers")
+      .select("*")
+      .eq("user_id", userId)
+      .order("transfer_date", { ascending: false });
+    if (error) return;
 
+    const remoteIds = new Set<string>();
     for (const row of data ?? []) {
+      remoteIds.add(row.id);
+      if (pendingIds.has(row.id)) continue;
+
       const remoteRecord: TransferRecord = {
         id: row.id,
         userId: row.user_id,
@@ -356,18 +411,31 @@ async function pullTable(entityName: SyncEntityName, userId: string) {
         syncError: null,
         lastSyncedAt: nowIso()
       };
-      const local = (await table.get(remoteRecord.id)) as TransferRecord | undefined;
-      if (!local || !local.userId || remoteRecord.updatedAt > local.updatedAt) {
-        await table.put(remoteRecord as never);
+      await table.put(remoteRecord as never);
+    }
+
+    const transfersTable = getOptionalTable<TransferRecord>("transfers");
+    if (transfersTable) {
+      const localTransfers = await transfersTable.toArray();
+      for (const local of localTransfers) {
+        if (!remoteIds.has(local.id) && !pendingIds.has(local.id)) {
+          await transfersTable.delete(local.id);
+        }
       }
-      latestUpdatedAt = row.updated_at;
     }
   } else if (entityName === "budgets") {
-    let q = client.from("budgets").select("*").eq("user_id", userId).order("updated_at", { ascending: true });
-    if (checkpoint) q = q.gt("updated_at", checkpoint);
-    const { data } = await q;
+    const { data, error } = await client
+      .from("budgets")
+      .select("*")
+      .eq("user_id", userId)
+      .order("updated_at", { ascending: true });
+    if (error) return;
 
+    const remoteIds = new Set<string>();
     for (const row of data ?? []) {
+      remoteIds.add(row.id);
+      if (pendingIds.has(row.id)) continue;
+
       const remoteRecord: Budget = {
         id: row.id,
         userId: row.user_id,
@@ -381,18 +449,28 @@ async function pullTable(entityName: SyncEntityName, userId: string) {
         syncError: null,
         lastSyncedAt: nowIso()
       };
-      const local = (await table.get(remoteRecord.id)) as Budget | undefined;
-      if (!local || !local.userId || remoteRecord.updatedAt > local.updatedAt) {
-        await table.put(remoteRecord as never);
+      await table.put(remoteRecord as never);
+    }
+
+    const localBudgets = await appDb.budgets.toArray();
+    for (const local of localBudgets) {
+      if (!remoteIds.has(local.id) && !pendingIds.has(local.id)) {
+        await appDb.budgets.delete(local.id);
       }
-      latestUpdatedAt = row.updated_at;
     }
   } else if (entityName === "recurringTransactions") {
-    let q = client.from("recurring_transactions").select("*").eq("user_id", userId).order("updated_at", { ascending: true });
-    if (checkpoint) q = q.gt("updated_at", checkpoint);
-    const { data } = await q;
+    const { data, error } = await client
+      .from("recurring_transactions")
+      .select("*")
+      .eq("user_id", userId)
+      .order("updated_at", { ascending: true });
+    if (error) return;
 
+    const remoteIds = new Set<string>();
     for (const row of data ?? []) {
+      remoteIds.add(row.id);
+      if (pendingIds.has(row.id)) continue;
+
       const remoteRecord: RecurringTransaction = {
         id: row.id,
         userId: row.user_id,
@@ -411,54 +489,72 @@ async function pullTable(entityName: SyncEntityName, userId: string) {
         syncError: null,
         lastSyncedAt: nowIso()
       };
-      const local = (await table.get(remoteRecord.id)) as RecurringTransaction | undefined;
-      if (!local || !local.userId || remoteRecord.updatedAt > local.updatedAt) {
-        await table.put(remoteRecord as never);
+      await table.put(remoteRecord as never);
+    }
+
+    const localRecurring = await appDb.recurringTransactions.toArray();
+    for (const local of localRecurring) {
+      if (!remoteIds.has(local.id) && !pendingIds.has(local.id)) {
+        await appDb.recurringTransactions.delete(local.id);
       }
-      latestUpdatedAt = row.updated_at;
     }
   } else if (entityName === "settings") {
     const { data: profile } = await client.from("profiles").select("*").eq("id", userId).maybeSingle();
-    if (profile) {
+    if (profile && !pendingIds.has("app-settings")) {
       const local = (await table.get("app-settings")) as AppSettings | undefined;
-      if (!local || !local.userId || profile.updated_at > local.updatedAt) {
-        const parsedTutorials =
-          typeof profile.tutorial_completed_ids === "string"
+      const parsedTutorials =
+        typeof profile.tutorial_completed_ids === "string"
+          ? profile.tutorial_completed_ids
+              .split(",")
+              .map((s: string) => s.trim())
+              .filter(Boolean)
+          : Array.isArray(profile.tutorial_completed_ids)
             ? profile.tutorial_completed_ids
-                .split(",")
-                .map((s: string) => s.trim())
-                .filter(Boolean)
-            : Array.isArray(profile.tutorial_completed_ids)
-              ? profile.tutorial_completed_ids
-              : local?.tutorialCompletedIds ?? [];
-        await table.put({
-          id: "app-settings",
-          userId,
-          remoteId: userId,
-          currencyCode: profile.preferred_currency || local?.currencyCode || "XAF",
-          language: (profile.preferred_language as "en" | "fr") || local?.language || "en",
-          themeMode: (profile.theme_mode as "light" | "dark" | "system") || local?.themeMode || "dark",
-          onboardingComplete: true,
-          tutorialCompletedIds: parsedTutorials,
-          createdAt: local?.createdAt || profile.created_at || nowIso(),
-          updatedAt: profile.updated_at || nowIso(),
-          syncStatus: "synced",
-          syncError: null,
-          lastSyncedAt: nowIso()
-        } as never);
-      }
-      latestUpdatedAt = profile.updated_at;
+            : local?.tutorialCompletedIds ?? [];
+      await table.put({
+        id: "app-settings",
+        userId,
+        remoteId: userId,
+        currencyCode: profile.preferred_currency || local?.currencyCode || "XAF",
+        language: (profile.preferred_language as "en" | "fr") || local?.language || "en",
+        themeMode: (profile.theme_mode as "light" | "dark" | "system") || local?.themeMode || "dark",
+        onboardingComplete: true,
+        tutorialCompletedIds: parsedTutorials,
+        createdAt: local?.createdAt || profile.created_at || nowIso(),
+        updatedAt: profile.updated_at || nowIso(),
+        syncStatus: "synced",
+        syncError: null,
+        lastSyncedAt: nowIso()
+      } as never);
     }
-  }
-
-  if (latestUpdatedAt) {
-    setCheckpoint(entityName, userId, latestUpdatedAt);
   }
 }
 
 let isSyncRunning = false;
 
 export const syncEngine = {
+  async pushEntityImmediate(
+    entityName: SyncEntityName,
+    entityId: string,
+    operation?: string,
+    opId?: string
+  ) {
+    if (!navigator.onLine || !supabase) return;
+    try {
+      const { data } = await supabase.auth.getSession();
+      const userId = data.session?.user?.id;
+      if (!userId) return;
+
+      await writeEntityToDatabase(entityName, entityId, userId, operation);
+      if (opId) {
+        await syncRepository.remove(opId);
+      }
+      syncRepository.recordSyncSuccess();
+    } catch {
+      // Operation remains in syncOperations for next run
+    }
+  },
+
   async run(userId: string) {
     if (!navigator.onLine || !supabase) {
       return syncRepository.summarize();
@@ -470,6 +566,15 @@ export const syncEngine = {
 
     isSyncRunning = true;
     try {
+      const pendingOperations = await syncRepository.listPending();
+      for (const operation of pendingOperations) {
+        try {
+          await pushOperation(operation, userId);
+        } catch {
+          // Individual failure logged; proceed with other queue items
+        }
+      }
+
       await Promise.all([
         pullTable("settings", userId),
         pullTable("accounts", userId),
@@ -479,16 +584,6 @@ export const syncEngine = {
         pullTable("budgets", userId),
         pullTable("recurringTransactions", userId)
       ]);
-
-      const pendingOperations = await syncRepository.listPending();
-
-      for (const operation of pendingOperations) {
-        try {
-          await pushOperation(operation, userId);
-        } catch {
-          // Individual failure logged; proceed with other queue items
-        }
-      }
 
       syncRepository.recordSyncSuccess();
       return syncRepository.summarize();
@@ -509,7 +604,7 @@ export const syncEngine = {
         await pullTable(tableName, userId);
         syncRepository.recordSyncSuccess();
         onUpdate?.();
-      }, 1200);
+      }, 600);
     };
 
     const channel = supabase

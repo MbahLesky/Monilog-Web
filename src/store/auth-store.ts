@@ -8,6 +8,7 @@ import { supabaseAuthService } from "@/services/supabase-auth-service";
 import { useSyncStore } from "@/store/sync-store";
 import type { Profile } from "@/types";
 import { settingsRepository } from "@/db/repositories/settings-repository";
+import { syncRepository } from "@/db/repositories/sync-repository";
 import { workspaceRepository } from "@/db/repositories/workspace-repository";
 import { nowIso } from "@/utils/date-utils";
 
@@ -127,6 +128,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     identifyUser(user.id);
 
     try {
+      const existingSettings = await settingsRepository.getSettings();
+      if (existingSettings.userId !== user.id) {
+        await syncRepository.clearAll();
+      }
       await workspaceRepository.releaseStaleOwnership(user.id);
       await useSyncStore.getState().runNow(user.id);
       if (!options?.isNewRegistration) {
@@ -135,8 +140,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           await settingsRepository.setOnboardingComplete(true);
         }
       }
-      await workspaceRepository.stampOwnership(user.id);
-      await useSyncStore.getState().runNow(user.id);
     } catch {
       if (!options?.isNewRegistration) {
         try {

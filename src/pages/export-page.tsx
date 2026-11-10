@@ -63,10 +63,10 @@ export function ExportPage() {
         startDate,
         endDate
       });
-      toast.success("Bank statement PDF downloaded.");
-      trackEvent(ANALYTICS_EVENTS.dataExported, { format: "pdf", dataset: "bank_statement" });
+      toast.success("Financial statement PDF downloaded.");
+      trackEvent(ANALYTICS_EVENTS.dataExported, { format: "pdf", dataset: "financial_statement" });
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Unable to export PDF bank statement.");
+      toast.error(error instanceof Error ? error.message : "Unable to export PDF financial statement.");
     } finally {
       setExportingPdf(false);
     }
@@ -94,8 +94,8 @@ export function ExportPage() {
 
   return (
     <PageShell
-      title="Export & Bank Statement"
-      description="Generate an official bank-statement style PDF sheet or spreadsheet-friendly CSV backups of your transactions and transfers."
+      title="Export & Financial Statement"
+      description="Generate an official financial statement PDF sheet or spreadsheet-friendly CSV backups of your transactions and transfers."
       action={
         <div className="flex flex-wrap items-center gap-2">
           <Button onClick={() => void handleExportPdfStatement()} disabled={exportingPdf}>
@@ -121,9 +121,9 @@ export function ExportPage() {
                 <FileText className="size-5" />
               </div>
               <div>
-                <CardTitle>Bank Statement (PDF)</CardTitle>
+                <CardTitle>Financial Statement (PDF)</CardTitle>
                 <CardDescription>
-                  Generate a formatted A4 bank statement with opening/closing balances, total credits & debits, and a chronological running-balance ledger.
+                  Generate a formatted A4 financial statement with opening/closing balances, total credits & debits, and a chronological running-balance ledger.
                 </CardDescription>
               </div>
             </div>
@@ -191,7 +191,7 @@ export function ExportPage() {
             <div className="pt-1">
               <Button onClick={() => void handleExportPdfStatement()} disabled={exportingPdf}>
                 <FileText className="size-4" />
-                {exportingPdf ? "Generating Bank Statement..." : "Download Bank Statement (PDF)"}
+                {exportingPdf ? "Generating Financial Statement..." : "Download Financial Statement (PDF)"}
               </Button>
             </div>
           </CardContent>
@@ -236,7 +236,7 @@ export function ExportPage() {
         <CardContent className="grid gap-3">
           {(exportHistory ?? []).length === 0 ? (
             <div className="rounded-xl border border-dashed border-border/80 p-6 text-sm text-muted-foreground">
-              No exports yet. Generate your first PDF bank statement or CSV backup when you are ready.
+              No exports yet. Generate your first PDF financial statement or CSV backup when you are ready.
             </div>
           ) : (
             exportHistory?.map((item) => (

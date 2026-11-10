@@ -39,7 +39,6 @@ import { categoriesRepository } from "@/db/repositories/categories-repository";
 import { settingsRepository } from "@/db/repositories/settings-repository";
 import { workspaceRepository } from "@/db/repositories/workspace-repository";
 import { jsonBackupService } from "@/services/json-backup-service";
-import { syncEngine } from "@/services/sync-engine";
 import { SUPPORTED_CURRENCIES } from "@/lib/constants";
 import { supabase } from "@/lib/supabase-client";
 import { ROUTES } from "@/routes/route-constants";
@@ -59,8 +58,8 @@ export type SettingsTabId =
   | "backup_restore"
   | "tutorials";
 
-const APP_VERSION = "1.3.1";
-const APP_BUILD = "7";
+const APP_VERSION = "1.3.2";
+const APP_BUILD = "8";
 
 export function SettingsPage() {
   const navigate = useNavigate();
@@ -83,7 +82,6 @@ export function SettingsPage() {
   const [newCategoryType, setNewCategoryType] = useState<TransactionType>("expense");
   const [linkCode, setLinkCode] = useState<string | null>(null);
   const [linkCodeLoading, setLinkCodeLoading] = useState(false);
-  const [syncingNow, setSyncingNow] = useState(false);
 
   useEffect(() => {
     if (!accounts) {
@@ -206,22 +204,6 @@ export function SettingsPage() {
     }
   }
 
-  async function handleSyncNow() {
-    if (!userId) {
-      toast.error("Sign in to sync with cloud.");
-      return;
-    }
-    setSyncingNow(true);
-    try {
-      await syncEngine.run(userId);
-      toast.success("Cloud sync completed.");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Sync failed.");
-    } finally {
-      setSyncingNow(false);
-    }
-  }
-
   async function handleReset() {
     await workspaceRepository.resetAppData();
     toast.success("App data reset. Onboarding is starting over.");
@@ -273,8 +255,8 @@ export function SettingsPage() {
     {
       id: "security",
       title: "Security",
-      subtitle: "Session protection & cloud sync status",
-      badge: userId ? "Synced" : "Local",
+      subtitle: "Session protection & cloud connection",
+      badge: userId ? "Connected" : "Guest",
       icon: ShieldCheck
     },
     {
@@ -294,7 +276,7 @@ export function SettingsPage() {
     {
       id: "import_export",
       title: "Import/Export",
-      subtitle: "Bank statement PDF & CSV spreadsheets",
+      subtitle: "Financial statement PDF & CSV spreadsheets",
       badge: "PDF & CSV",
       icon: FileDown
     },
@@ -485,7 +467,7 @@ export function SettingsPage() {
               <CardHeader>
                 <CardTitle>Currency Preference</CardTitle>
                 <CardDescription>
-                  Currency stays consistent across dashboard, transactions, analytics, PDF bank statements, and balances.
+                  Currency stays consistent across dashboard, transactions, analytics, PDF financial statements, and balances.
                 </CardDescription>
               </CardHeader>
               <CardContent className="grid gap-4 max-w-md">
@@ -635,27 +617,20 @@ export function SettingsPage() {
           {activeTab === "security" && (
             <Card>
               <CardHeader>
-                <CardTitle>Security & Cloud Sync</CardTitle>
+                <CardTitle>Security & Cloud Database</CardTitle>
                 <CardDescription>
-                  Manage your authenticated session, cloud synchronization with Supabase, and local storage protection.
+                  Manage your authenticated session and direct connection to the Moniilog Cloud Database.
                 </CardDescription>
               </CardHeader>
               <CardContent className="grid gap-4">
                 <div className="rounded-xl border border-border/70 p-4">
-                  <p className="text-sm font-semibold">Cloud Synchronization Status</p>
+                  <p className="text-sm font-semibold">Database Connection Status</p>
                   <p className="mt-1 text-sm text-muted-foreground">
                     {userId
-                      ? `Signed in (${profile?.email || "Authenticated"}). Local changes automatically sync with Moniilog Cloud.`
-                      : "Running in local-only mode. Sign in to enable automatic cloud backup and cross-device sync."}
+                      ? `Connected directly to Moniilog Cloud Database (${profile?.email || "Authenticated"}). All changes are read and written directly to the database.`
+                      : "Running in guest mode. Sign in to connect directly to your Moniilog Cloud Database."}
                   </p>
                   <div className="mt-4 flex flex-wrap gap-2">
-                    <Button
-                      variant="outline"
-                      onClick={() => void handleSyncNow()}
-                      disabled={!userId || syncingNow}
-                    >
-                      {syncingNow ? "Syncing..." : "Sync Now with Cloud"}
-                    </Button>
                     <Button variant="outline" onClick={() => void handleSignOut()}>
                       Sign out of this session
                     </Button>
@@ -757,7 +732,7 @@ export function SettingsPage() {
               <CardHeader>
                 <CardTitle>Import & Export Data</CardTitle>
                 <CardDescription>
-                  Generate an official PDF Bank Statement, export CSV spreadsheets, or import transactions from CSV.
+                  Generate an official PDF Financial Statement, export CSV spreadsheets, or import transactions from CSV.
                 </CardDescription>
               </CardHeader>
               <CardContent className="grid gap-4 sm:grid-cols-2">
@@ -765,11 +740,11 @@ export function SettingsPage() {
                   <div>
                     <p className="font-semibold">Export PDF Statement & CSV</p>
                     <p className="text-xs text-muted-foreground mt-1">
-                      Download a formatted bank statement PDF sheet or CSV files of your transactions and transfers.
+                      Download a formatted financial statement PDF sheet or CSV files of your transactions and transfers.
                     </p>
                   </div>
                   <Button onClick={() => navigate(ROUTES.exportData)}>
-                    Open Export & Bank Statement
+                    Open Export & Financial Statement
                   </Button>
                 </div>
                 <div className="rounded-xl border border-border/70 p-4 grid gap-3">
